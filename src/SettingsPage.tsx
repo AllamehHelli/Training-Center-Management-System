@@ -1,0 +1,522 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState } from 'react';
+import { useFieldSettings, DEFAULT_FIELD_SETTINGS } from './Settings';
+import { useAppStore } from './store';
+import { FieldSettings } from './types';
+import { useToast, InfoTooltip } from './ui';
+import {
+  IconCheck,
+  IconRefresh,
+  IconPlus,
+  IconClose,
+  IconGripVertical,
+  IconArrowUp,
+  IconArrowDown,
+  IconSettings,
+  IconFinance,
+  IconCalendar,
+} from './icons';
+import { toPersianDigits } from './utils';
+import { PaymentPlanManager } from './PaymentPlanManager';
+import { AcademicYearManager } from './AcademicYearManager';
+
+export const SettingsPage: React.FC = () => {
+  const {
+    fieldSettings,
+    saveFieldSettings,
+    resetFieldSettings,
+    grades,
+    addGrade,
+    removeGrade,
+    reorderGrades,
+    resetGrades,
+  } = useFieldSettings();
+
+  const { state } = useAppStore();
+  const { showToast } = useToast();
+
+  const [activeTab, setActiveTab] = useState<'years' | 'grades' | 'plans' | 'fields'>('years');
+  const [localState, setLocalState] = useState<FieldSettings>({ ...fieldSettings });
+
+  // New Grade state
+  const [newGradeName, setNewGradeName] = useState('');
+
+  // Drag and drop state for grades
+  const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
+  const fieldsList: { key: keyof FieldSettings; label: string; desc: string }[] = [
+    { key: 'firstName', label: 'نام دانش‌آموز', desc: 'وارد کردن نام کوچک هنگام ثبت‌نام و تشکیل پرونده الزامی باشد' },
+    { key: 'lastName', label: 'نام خانوادگی', desc: 'نام خانوادگی شناسنامه‌ای الزامی باشد' },
+    { key: 'fatherName', label: 'نام پدر', desc: 'نام پدر برای پرونده تحصیلی و احراز هویت الزامی باشد' },
+    { key: 'nationalId', label: 'کد ملی (۱۰ رقم)', desc: 'کد ملی ۱۰ رقمی با اعتبارسنجی ارقام الزامی باشد' },
+    { key: 'grade', label: 'پایه تحصیلی', desc: 'انتخاب پایه تحصیلی الزامی باشد' },
+    { key: 'gpa', label: 'معدل سال گذشته', desc: 'معدل کارنامه سال تحصیلی قبل ثبت شود' },
+    { key: 'school', label: 'نام مدرسه فعلی', desc: 'نام مدرسه‌ای که دانش‌آموز در آن مشغول به تحصیل است' },
+    { key: 'phones', label: 'شماره‌های تماس', desc: 'ثبت حداقل یک شماره موبایل معتبر (۱۱ رقم با پیش‌شماره ۰۹)' },
+  ];
+
+  const handleToggle = (key: keyof FieldSettings) => {
+    setLocalState((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  const handleSaveFields = () => {
+    saveFieldSettings(localState);
+    showToast('تنظیمات فیلدهای الزامی با موفقیت ذخیره شد', 'success');
+  };
+
+  const handleResetFields = () => {
+    setLocalState({ ...DEFAULT_FIELD_SETTINGS });
+    resetFieldSettings();
+    showToast('تنظیمات فیلدها به حالت پیش‌فرض بازنشانی شد', 'info');
+  };
+
+  // Grade Add / Remove
+  const handleAddNewGrade = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newGradeName.trim()) {
+      showToast('لطفاً عنوان پایه تحصیلی را وارد کنید', 'error');
+      return;
+    }
+    const res = addGrade(newGradeName.trim());
+    if (res.success) {
+      showToast(res.message, 'success');
+      setNewGradeName('');
+    } else {
+      showToast(res.message, 'error');
+    }
+  };
+
+  const handleRemoveGrade = (gradeName: string) => {
+    const usedByStudents = state.students.filter((s) => s.grade === gradeName).length;
+    const usedByClasses = state.classes.filter((c) => c.grade === gradeName).length;
+
+    if (usedByStudents > 0 || usedByClasses > 0) {
+      showToast(
+        `امکان حذف پایه «${gradeName}» وجود ندارد زیرا ${toPersianDigits(
+          usedByStudents
+        )} دانش‌آموز و ${toPersianDigits(usedByClasses)} کلاس به آن متصل هستند.`,
+        'error'
+      );
+      return;
+    }
+
+    const res = removeGrade(gradeName);
+    if (res.success) {
+      showToast(res.message, 'info');
+    } else {
+      showToast(res.message, 'error');
+    }
+  };
+
+  // Reorder grade helpers (Drag and Drop + Arrow buttons)
+  const handleMoveGrade = (fromIdx: number, toIdx: number) => {
+    if (toIdx < 0 || toIdx >= grades.length || fromIdx === toIdx) return;
+    const updated = [...grades];
+    const [movedItem] = updated.splice(fromIdx, 1);
+    updated.splice(toIdx, 0, movedItem);
+    reorderGrades(updated);
+    showToast(`ترتیب پایه «${movedItem}» تغییر یافت`, 'success');
+  };
+
+  // Drag Handlers
+  const onDragStart = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+    setDraggedIdx(index);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', index.toString());
+  };
+
+  const onDragOver = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverIdx !== index) {
+      setDragOverIdx(index);
+    }
+  };
+
+  const onDragLeave = () => {
+    // Keep clean
+  };
+
+  const onDrop = (e: React.DragEvent<HTMLDivElement>, targetIdx: number) => {
+    e.preventDefault();
+    if (draggedIdx !== null && draggedIdx !== targetIdx) {
+      handleMoveGrade(draggedIdx, targetIdx);
+    }
+    setDraggedIdx(null);
+    setDragOverIdx(null);
+  };
+
+  const onDragEnd = () => {
+    setDraggedIdx(null);
+    setDragOverIdx(null);
+  };
+
+  // Quick preset grade suggestions
+  const gradeSuggestions = ['دهم', 'یازدهم', 'دوازدهم', 'کنکور سراسری', 'تیزهوشان پنجم', 'المپیاد پیشرفته'];
+
+  return (
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-neutral-200/70">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl sm:text-2xl font-heading font-bold text-neutral-900">تنظیمات سامانه و پیکربندی</h1>
+            <InfoTooltip
+              title="پیکربندی آموزشگاه"
+              content="مدیریت دوره‌های سال تحصیلی و بایگانی، شخصی‌سازی پایه‌ها، الگوهای اقساط شهریه و تعیین فیلدهای اجباری فرم تشکیل پرونده."
+            />
+          </div>
+          <p className="text-xs text-neutral-500 mt-0.5">
+            دوره‌های سال تحصیلی، پایه‌های آموزشی، پلن‌های پرداخت اقساط و فیلدهای پرونده
+          </p>
+        </div>
+
+        {/* Tab switcher */}
+        <div className="flex items-center gap-1 p-1 bg-neutral-100/80 rounded-full flex-wrap">
+          <button
+            type="button"
+            onClick={() => setActiveTab('years')}
+            className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-full transition-all ${
+              activeTab === 'years'
+                ? 'bg-white text-neutral-900 shadow-2xs'
+                : 'text-neutral-500 hover:text-neutral-900'
+            }`}
+          >
+            <IconCalendar size={13} className={activeTab === 'years' ? 'text-neutral-900' : 'text-neutral-400'} />
+            <span>دوره‌های سال تحصیلی</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('grades')}
+            className={`px-4 py-1.5 text-xs font-semibold rounded-full transition-all ${
+              activeTab === 'grades'
+                ? 'bg-white text-neutral-900 shadow-2xs'
+                : 'text-neutral-500 hover:text-neutral-900'
+            }`}
+          >
+            <span>پایه‌های تحصیلی</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('plans')}
+            className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-full transition-all ${
+              activeTab === 'plans'
+                ? 'bg-white text-neutral-900 shadow-2xs'
+                : 'text-neutral-500 hover:text-neutral-900'
+            }`}
+          >
+            <IconFinance size={13} className={activeTab === 'plans' ? 'text-neutral-900' : 'text-neutral-400'} />
+            <span>پلن‌های اقساط</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('fields')}
+            className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-full transition-all ${
+              activeTab === 'fields'
+                ? 'bg-white text-neutral-900 shadow-2xs'
+                : 'text-neutral-500 hover:text-neutral-900'
+            }`}
+          >
+            <IconSettings size={13} className={activeTab === 'fields' ? 'text-neutral-900' : 'text-neutral-400'} />
+            <span>فیلدهای پرونده</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ------------------------------------------------------------- */}
+      {/* TAB 0: ACADEMIC YEARS & ARCHIVE MANAGEMENT                     */}
+      {/* ------------------------------------------------------------- */}
+      {activeTab === 'years' && (
+        <div className="bg-[#FBFDFC] rounded-2xl border border-slate-200/80 p-5 shadow-xs space-y-6">
+          <AcademicYearManager isInline={true} />
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* TAB 1: GRADES MANAGEMENT WITH DRAG AND DROP                   */}
+      {/* ------------------------------------------------------------- */}
+      {activeTab === 'grades' && (
+        <div className="space-y-6">
+          <div className="bg-[#FBFDFC] rounded-2xl border border-slate-200/80 p-5 shadow-xs space-y-5">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div>
+                <h2 className="text-lg font-bold text-[#0A3528]">
+                  پایه‌های تحصیلی آموزشگاه و تنظیم ترتیب با درگ اند دراپ
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  کارت‌های پایه‌ها را بگیرید و بکشید (Drag & Drop) تا ترتیب نمایش آنها در فرم‌ها، فیلترها و کارنامه‌ها تغییر کند.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  resetGrades();
+                  showToast('پایه‌های تحصیلی به ششم تا نهم بازنشانی شد', 'info');
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors shadow-xs shrink-0"
+              >
+                <IconRefresh size={14} />
+                <span>بازنشانی به پیش‌فرض</span>
+              </button>
+            </div>
+
+            {/* Add new grade form */}
+            <form onSubmit={handleAddNewGrade} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <div className="flex-1 relative">
+                <input
+                  type="text"
+                  value={newGradeName}
+                  onChange={(e) => setNewGradeName(e.target.value)}
+                  placeholder="عنوان پایه جدید را بنویسید (مثلاً: دهم، یازدهم، دوازدهم، کنکور، المپیاد...)"
+                  className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:border-[#0E7C5B] focus:bg-white transition-colors"
+                />
+              </div>
+              <button
+                type="submit"
+                className="flex items-center justify-center gap-1.5 px-5 py-2.5 text-xs font-semibold text-white bg-[#0E7C5B] rounded-xl hover:bg-[#0A3528] transition-colors shadow-xs shrink-0"
+              >
+                <IconPlus size={16} />
+                <span>افزودن پایه جدید</span>
+              </button>
+            </form>
+
+            {/* Quick suggestions */}
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+              <span className="text-[11px] text-slate-400">پیشنهادات سریع:</span>
+              {gradeSuggestions.map((sug) => (
+                <button
+                  key={sug}
+                  type="button"
+                  onClick={() => {
+                    const res = addGrade(sug);
+                    if (res.success) showToast(res.message, 'success');
+                    else showToast(res.message, 'info');
+                  }}
+                  className="px-2.5 py-1 bg-slate-100 hover:bg-[#0E7C5B]/10 hover:text-[#0E7C5B] text-slate-700 rounded-lg text-[11px] transition-colors"
+                >
+                  + {sug}
+                </button>
+              ))}
+            </div>
+
+            {/* Drag & Drop Notice */}
+            <div className="p-3 bg-amber-50/70 border border-amber-200/70 rounded-xl text-xs text-amber-900 flex items-center gap-2.5">
+              <IconGripVertical size={16} className="text-[#E9A13B] shrink-0" />
+              <span>
+                <strong>راهنمای جابجایی:</strong> می‌توانید با نگه‌داشتن و کشیدن هر کارت (درگ اند دراپ) یا با کلیک روی فلش‌های بالا و پایین، اولویت و ترتیب پایه‌ها را در کل سامانه شخصی‌سازی کنید.
+              </span>
+            </div>
+
+            {/* Reorderable Grades List */}
+            <div className="space-y-2.5 pt-2">
+              <div className="text-xs font-semibold text-slate-700 mb-2">
+                فهرست پایه‌های فعال به ترتیب اولویت ({toPersianDigits(grades.length)} پایه):
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {grades.map((grade, index) => {
+                  const studentCount = state.students.filter((s) => s.grade === grade).length;
+                  const classCount = state.classes.filter((c) => c.grade === grade).length;
+                  const isDragging = draggedIdx === index;
+                  const isOver = dragOverIdx === index;
+
+                  return (
+                    <div
+                      key={grade}
+                      draggable={true}
+                      onDragStart={(e) => onDragStart(e, index)}
+                      onDragOver={(e) => onDragOver(e, index)}
+                      onDragLeave={onDragLeave}
+                      onDrop={(e) => onDrop(e, index)}
+                      onDragEnd={onDragEnd}
+                      className={`group relative p-3.5 bg-white rounded-xl border transition-all select-none cursor-grab active:cursor-grabbing flex items-center justify-between gap-3 ${
+                        isDragging
+                          ? 'opacity-40 border-dashed border-[#0E7C5B] bg-emerald-50 scale-95 shadow-inner'
+                          : isOver
+                          ? 'border-2 border-[#0E7C5B] bg-emerald-50/60 shadow-md scale-[1.02]'
+                          : 'border-slate-200 hover:border-slate-300 shadow-2xs hover:shadow-xs'
+                      }`}
+                    >
+                      {/* Left: Drag Handle and Number */}
+                      <div className="flex items-center gap-2.5">
+                        <div
+                          className="p-1 text-slate-400 group-hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors"
+                          title="برای تغییر ترتیب درگ کنید"
+                        >
+                          <IconGripVertical size={16} />
+                        </div>
+                        <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-600 font-bold text-[11px] flex items-center justify-center font-mono">
+                          {toPersianDigits(index + 1)}
+                        </span>
+                        <div>
+                          <div className="font-bold text-sm text-[#0A3528]">پایه {grade}</div>
+                          <div className="text-[11px] text-slate-400 mt-0.5">
+                            {toPersianDigits(studentCount)} دانش‌آموز · {toPersianDigits(classCount)} کلاس
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right: Quick Arrow Buttons + Delete */}
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          disabled={index === 0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMoveGrade(index, index - 1);
+                          }}
+                          className={`p-1 rounded-md transition-colors ${
+                            index === 0
+                              ? 'text-slate-200 cursor-not-allowed'
+                              : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
+                          }`}
+                          title="انتقال به بالا"
+                        >
+                          <IconArrowUp size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={index === grades.length - 1}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMoveGrade(index, index + 1);
+                          }}
+                          className={`p-1 rounded-md transition-colors ${
+                            index === grades.length - 1
+                              ? 'text-slate-200 cursor-not-allowed'
+                              : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
+                          }`}
+                          title="انتقال به پایین"
+                        >
+                          <IconArrowDown size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveGrade(grade);
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-[#D64545] hover:bg-red-50 rounded-lg transition-colors mr-1"
+                          title={`حذف پایه ${grade}`}
+                        >
+                          <IconClose size={15} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* TAB 2: PAYMENT PLANS & FINANCIAL SYSTEM                       */}
+      {/* ------------------------------------------------------------- */}
+      {activeTab === 'plans' && (
+        <div>
+          <PaymentPlanManager />
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* TAB 3: REQUIRED FIELDS SETTINGS                               */}
+      {/* ------------------------------------------------------------- */}
+      {activeTab === 'fields' && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
+            <div>
+              <h2 className="text-lg font-bold text-[#0A3528]">تنظیمات فیلدهای الزامی پرونده دانش‌آموز</h2>
+              <p className="text-xs text-slate-500 mt-1">
+                تعیین کنید کدام فیلدها در فرم ثبت‌نام و تشکیل پرونده دانش‌آموزان برای اپراتور اجباری هستند.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleResetFields}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors shadow-xs"
+              >
+                <IconRefresh size={14} />
+                <span>بازنشانی به پیش‌فرض</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveFields}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-[#0E7C5B] rounded-lg hover:bg-[#0A3528] transition-colors shadow-xs"
+              >
+                <IconCheck size={16} />
+                <span>ذخیره تنظیمات فیلدها</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Settings Grid */}
+          <div className="bg-[#FBFDFC] rounded-2xl border border-slate-200/80 divide-y divide-slate-100 overflow-hidden shadow-xs">
+            {fieldsList.map((item) => {
+              const isRequired = localState[item.key];
+              return (
+                <div
+                  key={item.key}
+                  className="flex items-center justify-between p-4 sm:p-5 hover:bg-slate-50/60 transition-colors"
+                >
+                  <div className="space-y-1 pr-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm text-[#0A3528]">{item.label}</span>
+                      {isRequired ? (
+                        <span className="text-[11px] font-medium text-[#D64545] bg-red-50 border border-red-200 px-2 py-0.5 rounded-md">
+                          الزامی
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                          اختیاری
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500 leading-relaxed">{item.desc}</p>
+                  </div>
+
+                  {/* Toggle switch */}
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={isRequired}
+                    onClick={() => handleToggle(item.key)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                      isRequired ? 'bg-[#0E7C5B]' : 'bg-slate-300'
+                    }`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                        isRequired ? '-translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Info notice box */}
+          <div className="p-4 bg-emerald-50/60 border border-emerald-200/70 rounded-xl text-xs text-[#0A3528] leading-relaxed flex items-start gap-2.5">
+            <div className="w-1.5 h-1.5 rounded-full bg-[#0E7C5B] mt-1.5 shrink-0" />
+            <div>
+              تغییرات اعمال شده بلافاصله در فرم ثبت‌نام جدید، افزودن دانش‌آموز و سیستم ایمپورت گروهی اثر خواهند گذاشت.
+              فیلدهای غیرفعال به عنوان اختیاری علامت‌گذاری می‌شوند و عدم تکمیل آن‌ها مانع ثبت نخواهد شد.
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

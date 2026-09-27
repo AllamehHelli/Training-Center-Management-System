@@ -1,0 +1,686 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState } from 'react';
+import { useAppStore } from './store';
+import { useFieldSettings } from './Settings';
+import { toPersianDigits, formatToman, calculateClassDuration } from './utils';
+import { ClassRoom, ClassSession, SessionKind, StudentGrade } from './types';
+import { Modal, ConfirmModal, ProgressBar, useToast, Field, InfoTooltip } from './ui';
+import { DayPicker, TimeRangePicker } from './SchedulePickers';
+import {
+  IconPlus,
+  IconEdit,
+  IconTrash,
+  IconClose,
+  IconCalendar,
+  IconAlert,
+  IconCheck,
+} from './icons';
+
+export const Classes: React.FC = () => {
+  const { state, dispatch, getSessionEnrolledCount } = useAppStore();
+  const { grades } = useFieldSettings();
+  const { showToast } = useToast();
+
+  const [gradeFilter, setGradeFilter] = useState<'all' | string>('all');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingClass, setEditingClass] = useState<ClassRoom | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  // Form State
+  const [formName, setFormName] = useState('');
+  const [formGrade, setFormGrade] = useState<StudentGrade>(grades[0] || 'هفتم');
+  const [formTeacher, setFormTeacher] = useState('');
+  const [formTuition, setFormTuition] = useState<number>(12000000);
+  const [formSessions, setFormSessions] = useState<ClassSession[]>([
+    {
+      id: 'ses-init-1',
+      kind: 'even',
+      label: 'زنگ روزهای زوج',
+      days: 'شنبه، دوشنبه، چهارشنبه',
+      time: '۱۶:۰۰ الی ۱۷:۳۰ (۱ ساعت و ۳۰ دقیقه)',
+      startTime: '16:00',
+      endTime: '17:30',
+      durationMinutes: 90,
+      capacity: 25,
+    },
+    {
+      id: 'ses-init-2',
+      kind: 'odd',
+      label: 'زنگ روزهای فرد',
+      days: 'یکشنبه، سه‌شنبه، پنجشنبه',
+      time: '۱۷:۴۵ الی ۱۹:۱۵ (۱ ساعت و ۳۰ دقیقه)',
+      startTime: '17:45',
+      endTime: '19:15',
+      durationMinutes: 90,
+      capacity: 25,
+    },
+  ]);
+  const [formError, setFormError] = useState('');
+
+  // Filter classes
+  const filteredClasses = state.classes.filter((c) => {
+    if (gradeFilter !== 'all' && c.grade !== gradeFilter) return false;
+    return true;
+  });
+
+  const openForm = (c?: ClassRoom) => {
+    setFormError('');
+    if (c) {
+      setEditingClass(c);
+      setFormName(c.name);
+      setFormGrade(c.grade);
+      setFormTeacher(c.teacher);
+      setFormTuition(c.tuition);
+      setFormSessions(
+        c.sessions.map((s) => ({
+          ...s,
+          startTime: s.startTime || (s.time.includes('۱۷:۴۵') ? '17:45' : '16:00'),
+          endTime: s.endTime || (s.time.includes('۱۹:۱۵') ? '19:15' : '17:30'),
+        }))
+      );
+    } else {
+      setEditingClass(null);
+      setFormName('');
+      setFormGrade(grades[0] || 'هفتم');
+      setFormTeacher('');
+      setFormTuition(12000000);
+      setFormSessions([
+        {
+          id: `ses-${Date.now()}-1`,
+          kind: 'even',
+          label: 'زنگ روزهای زوج',
+          days: 'شنبه، دوشنبه، چهارشنبه',
+          time: '۱۶:۰۰ الی ۱۷:۳۰ (۱ ساعت و ۳۰ دقیقه)',
+          startTime: '16:00',
+          endTime: '17:30',
+          durationMinutes: 90,
+          capacity: 25,
+        },
+        {
+          id: `ses-${Date.now()}-2`,
+          kind: 'odd',
+          label: 'زنگ روزهای فرد',
+          days: 'یکشنبه، سه‌شنبه، پنجشنبه',
+          time: '۱۷:۴۵ الی ۱۹:۱۵ (۱ ساعت و ۳۰ دقیقه)',
+          startTime: '17:45',
+          endTime: '19:15',
+          durationMinutes: 90,
+          capacity: 25,
+        },
+      ]);
+    }
+    setIsModalOpen(true);
+  };
+
+  const handleAddSession = () => {
+    setFormSessions((prev) => [
+      ...prev,
+      {
+        id: `ses-${Date.now()}-${prev.length + 1}`,
+        kind: 'custom',
+        label: `زنگ اختصاصی ${toPersianDigits(prev.length + 1)}`,
+        days: 'پنجشنبه',
+        time: '۰۹:۰۰ الی ۱۲:۰۰ (۳ ساعت)',
+        startTime: '09:00',
+        endTime: '12:00',
+        durationMinutes: 180,
+        capacity: 20,
+      },
+    ]);
+  };
+
+  const handleRemoveSession = (id: string) => {
+    if (formSessions.length <= 1) {
+      showToast('حداقل یک زنگ آموزشی برای کلاس الزامی است', 'info');
+      return;
+    }
+    setFormSessions((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const handleSessionKindChange = (id: string, kind: SessionKind) => {
+    setFormSessions((prev) =>
+      prev.map((s) => {
+        if (s.id !== id) return s;
+        let defaultDays = s.days;
+        let defaultLabel = s.label;
+        if (kind === 'even') {
+          defaultDays = 'شنبه، دوشنبه، چهارشنبه';
+          defaultLabel = 'زنگ روزهای زوج';
+        } else if (kind === 'odd') {
+          defaultDays = 'یکشنبه، سه‌شنبه، پنجشنبه';
+          defaultLabel = 'زنگ روزهای فرد';
+        } else {
+          defaultDays = 'پنجشنبه، جمعه';
+          defaultLabel = 'کارگاه پنجشنبه و جمعه';
+        }
+        return {
+          ...s,
+          kind,
+          days: defaultDays,
+          label: defaultLabel,
+        };
+      })
+    );
+  };
+
+  const handleUpdateSession = (
+    id: string,
+    field: keyof ClassSession,
+    val: any
+  ) => {
+    setFormSessions((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, [field]: val } : s))
+    );
+  };
+
+  const handleUpdateTimeRange = (id: string, start: string, end: string, durationStr: string) => {
+    const dur = calculateClassDuration(start, end);
+    const displayTime = `${toPersianDigits(start)} الی ${toPersianDigits(end)} (${dur.formatted})`;
+    setFormSessions((prev) =>
+      prev.map((s) =>
+        s.id === id
+          ? {
+              ...s,
+              startTime: start,
+              endTime: end,
+              durationMinutes: dur.minutes,
+              time: displayTime,
+            }
+          : s
+      )
+    );
+  };
+
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError('');
+
+    if (!formName.trim()) {
+      setFormError('نام دوره آموزشی الزامی است');
+      return;
+    }
+    if (!formTeacher.trim()) {
+      setFormError('نام مدرس دوره الزامی است');
+      return;
+    }
+    if (formTuition <= 0) {
+      setFormError('مبلغ شهریه باید عددی مثبت باشد');
+      return;
+    }
+    if (formSessions.length === 0) {
+      setFormError('حداقل یک زنگ آموزشی الزامی است');
+      return;
+    }
+
+    // Check sessions validity
+    for (let i = 0; i < formSessions.length; i++) {
+      const ses = formSessions[i];
+      if (!ses.days.trim()) {
+        setFormError(`لطفاً روزهای برگزاری زنگ ${toPersianDigits(i + 1)} را از طریق انتخابگر مشخص کنید`);
+        return;
+      }
+    }
+
+    // Check duplicate course name + grade
+    const duplicate = state.classes.find(
+      (c) =>
+        c.name.trim().toLowerCase() === formName.trim().toLowerCase() &&
+        c.grade === formGrade &&
+        c.id !== editingClass?.id
+    );
+    if (duplicate) {
+      setFormError(`دوره‌ای با نام «${formName}» برای پایه ${formGrade} قبلاً تعریف شده است.`);
+      return;
+    }
+
+    if (editingClass) {
+      const updated: ClassRoom = {
+        ...editingClass,
+        name: formName.trim(),
+        grade: formGrade,
+        teacher: formTeacher.trim(),
+        tuition: formTuition,
+        sessions: formSessions,
+      };
+      dispatch({ type: 'UPDATE_CLASS', payload: updated });
+      showToast('مشخصات دوره آموزشی با موفقیت به‌روزرسانی شد', 'success');
+    } else {
+      const newClass: ClassRoom = {
+        id: `cls-${Date.now()}`,
+        name: formName.trim(),
+        grade: formGrade,
+        teacher: formTeacher.trim(),
+        tuition: formTuition,
+        sessions: formSessions,
+      };
+      dispatch({ type: 'ADD_CLASS', payload: newClass });
+      showToast(`دوره «${newClass.name}» با موفقیت افزوده شد`, 'success');
+    }
+
+    setIsModalOpen(false);
+  };
+
+  const handleDeleteClass = (id: string) => {
+    dispatch({ type: 'DELETE_CLASS', payload: id });
+    showToast('دوره آموزشی و برنامه‌های وابسته حذف شدند', 'info');
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-neutral-200/70">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl sm:text-2xl font-heading font-bold text-neutral-900">کلاس‌ها و زنگ‌های آموزشی</h2>
+            <InfoTooltip
+              title="مدیریت دوره‌های آموزشی"
+              content="تعریف کلاس‌های آموزشی، تعیین شهریه دوره، نام استاد، زنگ‌های روزهای زوج، فرد و اختصاصی به همراه پایش هوشمند ظرفیت صندلی‌های باقیمانده."
+            />
+          </div>
+          <p className="text-xs text-neutral-500 mt-0.5">
+            برنامه کلاس‌ها، زمان‌بندی زنگ‌های زوج و فرد و پایش ظرفیت هر دوره
+          </p>
+        </div>
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => openForm()}
+            className="flex items-center gap-1.5 px-5 py-2 text-xs font-semibold text-white bg-neutral-900 rounded-full hover:bg-neutral-800 transition-colors shadow-xs"
+          >
+            <IconPlus size={15} />
+            <span>تعریف دوره جدید</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Dynamic Grade Filter Tabs */}
+      <div className="flex flex-wrap items-center gap-1 p-1 bg-neutral-100/80 rounded-full w-fit">
+        <button
+          type="button"
+          onClick={() => setGradeFilter('all')}
+          className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+            gradeFilter === 'all'
+              ? 'bg-white text-neutral-900 font-bold shadow-2xs'
+              : 'text-neutral-500 hover:text-neutral-900'
+          }`}
+        >
+          همه دوره‌ها ({toPersianDigits(state.classes.length)})
+        </button>
+        {grades.map((grade) => {
+          const count = state.classes.filter((c) => c.grade === grade).length;
+          return (
+            <button
+              key={grade}
+              type="button"
+              onClick={() => setGradeFilter(grade)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors flex items-center gap-1.5 ${
+                gradeFilter === grade
+                  ? 'bg-white text-neutral-900 font-bold shadow-2xs'
+                  : 'text-neutral-500 hover:text-neutral-900'
+              }`}
+            >
+              <span>پایه {grade}</span>
+              <span className="text-[10px] opacity-75 font-mono">({toPersianDigits(count)})</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Class Cards Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {filteredClasses.length === 0 ? (
+          <div className="col-span-full py-12 text-center text-neutral-400 bg-white rounded-3xl border border-neutral-200/70">
+            هیچ دوره‌ای در این پایه تحصیلی تعریف نشده است. با دکمه «تعریف دوره جدید» شروع کنید.
+          </div>
+        ) : (
+          filteredClasses.map((cls) => {
+            let classCap = 0;
+            let classEnrolled = 0;
+            cls.sessions.forEach((s) => {
+              classCap += s.capacity;
+              classEnrolled += getSessionEnrolledCount(cls.id, s.id);
+            });
+
+            return (
+              <div
+                key={cls.id}
+                className="bg-white rounded-3xl p-5 sm:p-6 border border-neutral-200/70 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
+              >
+                <div>
+                  {/* Header */}
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div>
+                      <span className="text-[11px] font-semibold text-[#0E7C5B] bg-emerald-50 px-2 py-0.5 rounded-md">
+                        پایه {cls.grade}
+                      </span>
+                      <h3 className="text-base font-bold text-[#0A3528] mt-1.5 leading-snug">
+                        {cls.name}
+                      </h3>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => openForm(cls)}
+                        className="p-1.5 text-slate-400 hover:text-[#0E7C5B] hover:bg-slate-100 rounded-lg transition-colors"
+                        title="ویرایش دوره"
+                      >
+                        <IconEdit size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteConfirmId(cls.id)}
+                        className="p-1.5 text-slate-400 hover:text-[#D64545] hover:bg-red-50 rounded-lg transition-colors"
+                        title="حذف دوره"
+                      >
+                        <IconTrash size={16} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-slate-500 mb-3">
+                    مدرس: <strong className="text-slate-700">{cls.teacher}</strong>
+                  </div>
+
+                  <div className="text-xs font-bold text-[#0A3528] mb-4 pb-3 border-b border-slate-100">
+                    شهریه دوره: {formatToman(cls.tuition)}
+                  </div>
+
+                  {/* Sessions List */}
+                  <div className="space-y-3">
+                    <div className="text-[11px] font-semibold text-slate-600 flex items-center justify-between">
+                      <span>زنگ‌های برگزاری و ظرفیت:</span>
+                      <span className="text-slate-400 text-[10px]">
+                        {toPersianDigits(cls.sessions.length)} زنگ
+                      </span>
+                    </div>
+
+                    {cls.sessions.map((ses) => {
+                      const enrolled = getSessionEnrolledCount(cls.id, ses.id);
+                      const remaining = Math.max(0, ses.capacity - enrolled);
+                      const isFull = remaining === 0;
+
+                      let kindBadgeClass = 'bg-[#0E7C5B]/10 text-[#0E7C5B] border-[#0E7C5B]/30';
+                      let kindText = 'روز زوج';
+                      if (ses.kind === 'odd') {
+                        kindBadgeClass = 'bg-[#E9A13B]/10 text-[#b37016] border-[#E9A13B]/30';
+                        kindText = 'روز فرد';
+                      } else if (ses.kind === 'custom') {
+                        kindBadgeClass = 'bg-[#3E7CB1]/10 text-[#3E7CB1] border-[#3E7CB1]/30';
+                        kindText = 'سفارشی';
+                      }
+
+                      return (
+                        <div
+                          key={ses.id}
+                          className="p-3 bg-slate-50/90 rounded-xl border border-slate-200/70 text-xs space-y-1.5"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-slate-800">{ses.label}</span>
+                            <span
+                              className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border ${kindBadgeClass}`}
+                            >
+                              {kindText}
+                            </span>
+                          </div>
+                          <div className="text-slate-600 text-[11px]">
+                            {ses.days}
+                          </div>
+                          <div className="text-slate-500 text-[11px]">
+                            ساعت: {toPersianDigits(ses.time)}
+                          </div>
+                          <div className="pt-1">
+                            <ProgressBar
+                              current={enrolled}
+                              max={ses.capacity}
+                              colorClass={isFull ? 'bg-[#D64545]' : 'bg-[#0E7C5B]'}
+                              showText={false}
+                            />
+                            <div className="flex justify-between items-center text-[10px] text-slate-400 mt-1">
+                              <span className={isFull ? 'text-[#D64545] font-bold' : ''}>
+                                {isFull ? 'ظرفیت تکمیل' : `${toPersianDigits(remaining)} صندلی خالی`}
+                              </span>
+                              <span>
+                                {toPersianDigits(enrolled)} از {toPersianDigits(ses.capacity)} نفر
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Total Class Summary Footer */}
+                <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                  <span>کل ثبت‌نام‌های دوره:</span>
+                  <span className="font-bold text-[#0A3528]">
+                    {toPersianDigits(classEnrolled)} از {toPersianDigits(classCap)} نفر
+                  </span>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Modal: Add / Edit Class                                             */}
+      {/* ------------------------------------------------------------------ */}
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editingClass ? 'ویرایش دوره آموزشی' : 'تعریف دوره آموزشی جدید'}
+        maxWidth="3xl"
+      >
+        <form onSubmit={handleFormSubmit} className="space-y-5">
+          {formError && (
+            <div className="p-3 bg-red-50 border border-red-200 text-[#D64545] rounded-xl text-xs flex items-center gap-2">
+              <IconAlert size={16} className="shrink-0" />
+              <span>{formError}</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Course Name */}
+            <Field label="نام دوره آموزشی" required>
+              <input
+                type="text"
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+                placeholder="مثلاً: ریاضیات پیشرفته و المپیاد تیزهوشان"
+                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#0E7C5B] focus:bg-white"
+              />
+            </Field>
+
+            {/* Dynamic Grade selection */}
+            <Field label="پایه تحصیلی" required>
+              <select
+                value={formGrade}
+                onChange={(e) => setFormGrade(e.target.value as StudentGrade)}
+                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#0E7C5B] focus:bg-white"
+              >
+                {grades.map((grade) => (
+                  <option key={grade} value={grade}>
+                    پایه {grade}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            {/* Teacher */}
+            <Field label="نام مدرس / تیم آموزشی" required>
+              <input
+                type="text"
+                value={formTeacher}
+                onChange={(e) => setFormTeacher(e.target.value)}
+                placeholder="مثلاً: دکتر علیرضا میرزایی"
+                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#0E7C5B] focus:bg-white"
+              />
+            </Field>
+
+            {/* Tuition */}
+            <Field label="مبلغ شهریه ترم (تومان)" required>
+              <input
+                type="number"
+                min="0"
+                step="500000"
+                value={formTuition}
+                onChange={(e) => setFormTuition(Number(e.target.value) || 0)}
+                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#0E7C5B] focus:bg-white text-right"
+              />
+            </Field>
+          </div>
+
+          {/* Interactive Multi-Session Editor with DayPicker & TimeRangePicker */}
+          <div className="pt-3 border-t border-slate-200 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="text-xs font-bold text-[#0A3528] block">
+                  زنگ‌های برگزاری کلاس <span className="text-[#D64545]">*</span>
+                </label>
+                <span className="text-[11px] text-slate-400">
+                  برای هر زنگ، روزها را با انتخابگر چندتایی و ساعت شروع و پایان را مشخص کنید تا مدت زمان خودکار محاسبه شود
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleAddSession}
+                className="flex items-center gap-1 text-[11px] font-semibold text-[#0E7C5B] hover:text-[#0A3528] bg-emerald-50 px-2.5 py-1.5 rounded-lg transition-colors"
+              >
+                <IconPlus size={14} />
+                <span>افزودن زنگ جدید</span>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {formSessions.map((ses, index) => (
+                <div
+                  key={ses.id}
+                  className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-4 shadow-2xs"
+                >
+                  {/* Session Header */}
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                    <div className="flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-[#0A3528] text-white text-[11px] font-bold flex items-center justify-center">
+                        {toPersianDigits(index + 1)}
+                      </span>
+                      <span className="font-bold text-xs text-[#0A3528]">
+                        تنظیمات زنگ {toPersianDigits(index + 1)}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveSession(ses.id)}
+                      className="p-1 text-slate-400 hover:text-[#D64545] hover:bg-white rounded-lg transition-colors"
+                      title="حذف این زنگ"
+                    >
+                      <IconClose size={15} />
+                    </button>
+                  </div>
+
+                  {/* Top row: Type & Label & Capacity */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">نوع زنگ:</label>
+                      <select
+                        value={ses.kind}
+                        onChange={(e) => handleSessionKindChange(ses.id, e.target.value as SessionKind)}
+                        className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-hidden"
+                      >
+                        <option value="even">روزهای زوج</option>
+                        <option value="odd">روزهای فرد</option>
+                        <option value="custom">سفارشی / آخر هفته</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">عنوان زنگ:</label>
+                      <input
+                        type="text"
+                        value={ses.label}
+                        onChange={(e) => handleUpdateSession(ses.id, 'label', e.target.value)}
+                        placeholder="مثلاً: زنگ عصر روزهای زوج"
+                        className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-hidden"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">ظرفیت پذیرش (نفر):</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="200"
+                        value={ses.capacity}
+                        onChange={(e) =>
+                          handleUpdateSession(ses.id, 'capacity', Number(e.target.value) || 20)
+                        }
+                        className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-hidden text-center"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Interactive Day Picker (Requirement 2) */}
+                  <div className="p-3 bg-white rounded-xl border border-slate-200/90 space-y-1">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      روزهای برگزاری زنگ (انتخاب چندتایی):
+                    </label>
+                    <DayPicker
+                      value={ses.days}
+                      onChange={(newDays) => handleUpdateSession(ses.id, 'days', newDays)}
+                    />
+                  </div>
+
+                  {/* Minimal Start & End Time with Auto Duration (Requirement 3) */}
+                  <div className="p-3 bg-white rounded-xl border border-slate-200/90 space-y-1">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      ساعت برگزاری کلاس (شروع و پایان با محاسبه خودکار مدت زمان):
+                    </label>
+                    <TimeRangePicker
+                      startTime={ses.startTime || '16:00'}
+                      endTime={ses.endTime || '17:30'}
+                      onChange={(start, end, durationStr) =>
+                        handleUpdateTimeRange(ses.id, start, end, durationStr)
+                      }
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Form Actions */}
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(false)}
+              className="px-4 py-2 text-xs font-medium text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200"
+            >
+              انصراف
+            </button>
+            <button
+              type="submit"
+              className="px-5 py-2 text-xs font-semibold text-white bg-[#0E7C5B] rounded-lg hover:bg-[#0A3528] transition-colors shadow-xs"
+            >
+              {editingClass ? 'ذخیره تغییرات دوره' : 'ثبت دوره آموزشی'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Delete Confirmation */}
+      <ConfirmModal
+        isOpen={!!deleteConfirmId}
+        onClose={() => setDeleteConfirmId(null)}
+        onConfirm={() => deleteConfirmId && handleDeleteClass(deleteConfirmId)}
+        title="حذف دوره آموزشی"
+        description="آیا از حذف این دوره آموزشی اطمینان دارید؟ تمام زنگ‌ها و ثبت‌نام‌های وابسته به این دوره حذف خواهند شد."
+        confirmText="بله، حذف دوره"
+        cancelText="انصراف"
+      />
+    </div>
+  );
+};

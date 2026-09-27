@@ -1,0 +1,6 @@
+{
+  "name": "سیستم جامع ثبت‌نام موسسه علامه حلی",
+  "description": "سامانه مدیریت یکپارچه ثبت‌نام دانش‌آموزان، کلاس‌ها، دفترچه اقساط و اتصال ووکامرس موسسه تیزهوشان علامه حلی",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
