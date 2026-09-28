@@ -5,6 +5,8 @@
 
 import React, { useState } from 'react';
 import { useAppStore } from '../store';
+import { useFieldSettings } from '../Settings';
+import { validateStudent, buildStudentFromInput } from '../studentValidation';
 import { Registration, RegistrationStatus, Student } from '../types';
 import {
   toPersianDigits,
@@ -13,8 +15,6 @@ import {
   getTodayJalali,
   isOverdue,
   daysOverdue,
-  validateNationalId,
-  validateIranianMobile,
 } from '../utils';
 import { Modal, Avatar, useToast, Field, ProgressBar } from '../ui';
 import {
@@ -45,6 +45,7 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
   onClose,
 }) => {
   const { state, dispatch, getStudentById, getClassById, getSessionById } = useAppStore();
+  const { fieldSettings } = useFieldSettings();
   const { showToast } = useToast();
   const today = getTodayJalali();
 
@@ -87,6 +88,7 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
   const [editSchool, setEditSchool] = useState('');
   const [editGpa, setEditGpa] = useState('');
   const [editPhones, setEditPhones] = useState<{ id: string; label: string; number: string }[]>([]);
+  const [editErrors, setEditErrors] = useState<Record<string, string>>({});
 
   // Notes state
   const [editNotes, setEditNotes] = useState('');
@@ -109,6 +111,7 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
     }
     setIsEditingStudent(false);
     setIsPrintReceiptOpen(false);
+    setEditErrors({});
   }, [activeRegId, student?.id]);
 
   if (!student) return null;
@@ -140,24 +143,36 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
   };
 
   // Save Student Profile Edits
+  // HI-2 fix: run the SAME shared validation as the Students form
+  // (validateStudent): national-ID format/checksum + uniqueness across all
+  // students, phone validity, GPA range 0..20 and required fields per
+  // Settings fieldSettings. The previous code imported validateNationalId /
+  // validateIranianMobile but never called them, and used `|| student.gpa`
+  // which silently discarded a legitimate GPA of 0.
   const handleSaveStudent = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editFirstName.trim() || !editLastName.trim()) {
-      showToast('نام و نام خانوادگی دانش‌آموز الزامی است', 'error');
-      return;
-    }
 
-    const updatedStudent: Student = {
-      ...student,
-      firstName: editFirstName.trim(),
-      lastName: editLastName.trim(),
-      fatherName: editFatherName.trim(),
-      nationalId: toEnglishDigits(editNationalId.trim()),
-      grade: editGrade,
-      school: editSchool.trim(),
-      gpa: parseFloat(toEnglishDigits(editGpa)) || student.gpa,
+    const input = {
+      firstName: editFirstName,
+      lastName: editLastName,
+      fatherName: editFatherName,
+      nationalId: editNationalId,
+      grade: editGrade || student.grade,
+      gpa: editGpa,
+      school: editSchool,
       phones: editPhones.filter((p) => p.number.trim().length > 0),
     };
+
+    const errors = validateStudent(input, fieldSettings, state.students, student.id);
+
+    if (Object.keys(errors).length > 0) {
+      setEditErrors(errors);
+      showToast('لطفاً خطاهای مشخصات دانش‌آموز را برطرف نمایید', 'error');
+      return;
+    }
+    setEditErrors({});
+
+    const updatedStudent: Student = buildStudentFromInput(input, student);
 
     dispatch({ type: 'UPDATE_STUDENT', payload: updatedStudent });
     showToast('مشخصات دانش‌آموز با موفقیت به‌روزرسانی شد', 'success');
@@ -462,8 +477,18 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
           ) : (
             /* Inline Edit Form */
             <form onSubmit={handleSaveStudent} className="space-y-4 pt-2">
+              {Object.keys(editErrors).length > 0 && (
+                <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700">
+                  <IconAlert size={14} className="mt-0.5 shrink-0" />
+                  <ul className="list-disc pr-4 space-y-1">
+                    {Object.values(editErrors).map((msg) => (
+                      <li key={msg}>{msg}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <Field label="نام کوچک">
+                <Field label="نام کوچک" required={fieldSettings.firstName} error={editErrors.firstName}>
                   <input
                     type="text"
                     value={editFirstName}
@@ -471,7 +496,7 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
                     className="w-full px-3 py-1.5 text-xs bg-neutral-50 border border-neutral-200 rounded-xl"
                   />
                 </Field>
-                <Field label="نام خانوادگی">
+                <Field label="نام خانوادگی" required={fieldSettings.lastName} error={editErrors.lastName}>
                   <input
                     type="text"
                     value={editLastName}
@@ -479,7 +504,7 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
                     className="w-full px-3 py-1.5 text-xs bg-neutral-50 border border-neutral-200 rounded-xl"
                   />
                 </Field>
-                <Field label="نام پدر">
+                <Field label="نام پدر" required={fieldSettings.fatherName} error={editErrors.fatherName}>
                   <input
                     type="text"
                     value={editFatherName}
@@ -490,7 +515,7 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <Field label="کد ملی">
+                <Field label="کد ملی" required={fieldSettings.nationalId} error={editErrors.nationalId}>
                   <input
                     type="text"
                     value={editNationalId}
@@ -498,7 +523,7 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
                     className="w-full px-3 py-1.5 text-xs bg-neutral-50 border border-neutral-200 rounded-xl font-mono text-left"
                   />
                 </Field>
-                <Field label="مدرسه">
+                <Field label="مدرسه" required={fieldSettings.school} error={editErrors.school}>
                   <input
                     type="text"
                     value={editSchool}
@@ -506,7 +531,7 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
                     className="w-full px-3 py-1.5 text-xs bg-neutral-50 border border-neutral-200 rounded-xl"
                   />
                 </Field>
-                <Field label="معدل">
+                <Field label="معدل" required={fieldSettings.gpa} error={editErrors.gpa}>
                   <input
                     type="text"
                     value={editGpa}
@@ -519,7 +544,10 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
               {/* Phone Numbers Editor */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-neutral-700">شماره‌های تماس اولیا و دانش‌آموز:</label>
+                  <label className="text-xs font-semibold text-neutral-700">شماره‌های تماس اولیا و دانش‌آموز:{fieldSettings.phones && <span className="text-[#D64545]"> *</span>}</label>
+                  {editErrors.phones && (
+                    <span className="text-[11px] text-red-600 font-medium">{editErrors.phones}</span>
+                  )}
                   <button
                     type="button"
                     onClick={handleAddPhone}
