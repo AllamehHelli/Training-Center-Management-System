@@ -26,6 +26,13 @@ interface ToastContextValue {
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
+// CR-1: module-level stable reference to the active toast function, so layers
+// created *above* AppProvider in the tree (like the guarded dispatch) can
+// surface messages without a hook. Set by ToastProvider on mount.
+let globalShowToast: ((message: string, type?: ToastType, title?: string) => void) | null = null;
+
+export const getGlobalToast = () => globalShowToast;
+
 export const useToast = () => {
   const ctx = useContext(ToastContext);
   if (!ctx) {
@@ -44,6 +51,13 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4000);
   };
+
+  useEffect(() => {
+    globalShowToast = showToast;
+    return () => {
+      if (globalShowToast === showToast) globalShowToast = null;
+    };
+  });
 
   const removeToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));

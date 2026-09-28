@@ -46,6 +46,7 @@ export const Registrations: React.FC = () => {
     getSessionById,
     getSessionRemainingCapacity,
     getSessionEnrolledCount,
+    isViewingArchived,
   } = useAppStore();
   const { showToast } = useToast();
 
@@ -274,6 +275,10 @@ export const Registrations: React.FC = () => {
 
   // Status Change
   const handleStatusChange = (id: string, status: RegistrationStatus) => {
+    if (isViewingArchived) {
+      showToast(ARCHIVED_READONLY_MESSAGE, 'error');
+      return;
+    }
     dispatch({ type: 'UPDATE_REGISTRATION_STATUS', payload: { id, status } });
     showToast(
       status === 'approved'
@@ -287,6 +292,10 @@ export const Registrations: React.FC = () => {
 
   // Payment Toggle on receipt
   const handleTogglePayment = (regId: string, instId: string, isPaid: boolean) => {
+    if (isViewingArchived) {
+      showToast(ARCHIVED_READONLY_MESSAGE, 'error');
+      return;
+    }
     if (isPaid) {
       dispatch({ type: 'REFUND_INSTALLMENT', payload: { regId, instId } });
       showToast('پرداخت قسط عودت داده شد', 'info');
@@ -332,7 +341,9 @@ export const Registrations: React.FC = () => {
           <button
             type="button"
             onClick={openNewRegistration}
-            className="flex items-center gap-1.5 px-5 py-2 text-xs font-semibold text-white bg-neutral-900 rounded-full hover:bg-neutral-800 transition-colors shadow-xs"
+            disabled={isViewingArchived}
+            title={isViewingArchived ? 'داده‌های بایگانی‌شده فقط‌خواندنی هستند' : undefined}
+            className="flex items-center gap-1.5 px-5 py-2 text-xs font-semibold text-white bg-neutral-900 rounded-full hover:bg-neutral-800 transition-colors shadow-xs disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-neutral-900"
           >
             <IconPlus size={15} />
             <span>ثبت‌نام جدید</span>

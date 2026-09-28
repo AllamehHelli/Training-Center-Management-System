@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { createContext, useContext, useReducer, useEffect } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useRef, useState } from 'react';
 import {
   Student,
   ClassRoom,
@@ -12,11 +12,39 @@ import {
   WooSettings,
   SyncLogItem,
   AcademicYear,
+  AcademicYearDataSnapshot,
 } from './types';
 import { buildSeedData, migrateLegacyData } from './data';
 import { getTodayJalali } from './utils';
+import { ToastType, ToastItem, getGlobalToast } from './ui';
+import { IconAlert, IconCheck, IconClose } from './icons';
 
 const STORAGE_KEY = 'helli_institute_data_v2';
+
+/**
+ * CR-1: Actions that mutate the currently displayed dataset (students /
+ * classes / registrations). While an archived academic year is being viewed
+ * (viewingYearId !== activeYearId) these actions are rejected at the dispatch
+ * layer so historical records can never be altered.
+ */
+export const MUTATING_ACTION_TYPES: ReadonlySet<AppAction['type']> = new Set<AppAction['type']>([
+  'ADD_STUDENT',
+  'UPDATE_STUDENT',
+  'DELETE_STUDENT',
+  'BULK_ADD_STUDENTS',
+  'ADD_CLASS',
+  'UPDATE_CLASS',
+  'DELETE_CLASS',
+  'ADD_REGISTRATION',
+  'UPDATE_REGISTRATION',
+  'UPDATE_REGISTRATION_STATUS',
+  'DELETE_REGISTRATION',
+  'MARK_INSTALLMENT_PAID',
+  'REFUND_INSTALLMENT',
+]);
+
+export const ARCHIVED_READONLY_MESSAGE =
+  'سال تحصیلی در حال مشاهده بایگانی‌شده و فقط‌خواندنی است؛ برای افزودن، ویرایش یا حذف اطلاعات ابتدا به سال فعال بازگردید.';
 
 export interface AppState {
   academicYears: AcademicYear[];
@@ -207,25 +235,50 @@ function appReducer(state: AppState, action: AppAction): AppState {
       const targetYearId = action.payload;
       if (targetYearId === state.viewingYearId) return state;
 
-      // 1. Snapshot current displayed dataset into currently viewed year's archivedData
-      const updatedYears = state.academicYears.map((y) => {
-        if (y.id === state.viewingYearId) {
-          return {
-            ...y,
-            archivedData: {
-              students: state.students,
-              classes: state.classes,
-              registrations: state.registrations,
-            },
-          };
-        }
-        return y;
-      });
+      // CR-1 fix: only the ACTIVE year owns the live working dataset. The
+      // displayed data for archived years is an immutable read-only snapshot
+      // stored in `archivedData`. We persist the live dataset ONLY into the
+      // active year (previously any year being viewed was overwritten with
+      // whatever happened to be in memory, permanently corrupting history).
+      const updatedYears =
+        state.viewingYearId === state.activeYearId
+          ? state.academicYears.map((y) =>
+              y.id === state.activeYearId
+                ? {
+                    ...y,
+                    archivedData: {
+                      students: state.students,
+                      classes: state.classes,
+                      registrations: state.registrations,
+                    },
+                  }
+                : y
+            )
+          : state.academicYears;
 
-      // 2. Find target year
+      // Find target year
       const targetYear = updatedYears.find((y) => y.id === targetYearId);
       if (!targetYear) return { ...state, academicYears: updatedYears };
 
+      if (targetYearId === state.activeYearId) {
+        // Restore the live dataset from the active year's own snapshot
+        // (falling back to empty collections only if never initialized).
+        const live: AcademicYearDataSnapshot = targetYear.archivedData || {
+          students: [],
+          classes: [],
+          registrations: [],
+        };
+        return {
+          ...state,
+          academicYears: updatedYears,
+          viewingYearId: targetYearId,
+          students: live.students || [],
+          classes: live.classes || [],
+          registrations: live.registrations || [],
+        };
+      }
+
+      // Archived year: load its historical snapshot strictly read-only.
       const snapshot = targetYear.archivedData || {
         students: [],
         classes: [],
@@ -327,6 +380,11 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
 export interface AppContextValue {
   state: AppState;
+  /**
+   * CR-1: guarded dispatch — mutating actions (students/classes/registrations/
+   * payments) are rejected while an archived year is being viewed. Use this
+   * everywhere instead of the raw reducer dispatch.
+   */
   dispatch: React.Dispatch<AppAction>;
   activeAcademicYear: AcademicYear | undefined;
   viewingAcademicYear: AcademicYear | undefined;
@@ -344,8 +402,11 @@ export interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
-export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [state, dispatch] = useReducer(appReducer, undefined, () => {
+export const AppProvider: React.FC<{
+  children: React.ReactNode;
+  showToast?: (message: string, type?: ToastType, title?: string) => void;
+}> = ({ children, showToast: showToastProp }) => {
+  const [state, rawDispatch] = useReducer(appReducer, undefined, () => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
@@ -357,6 +418,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return buildSeedData();
   });
+
+  // Keep a live ref to the current state so the guarded dispatch can read
+  // viewingYearId/activeYearId without re-creating on every render.
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  // Toast function injected from outside (ToastProvider wraps AppProvider).
+  const externalToastRef = useRef(showToastProp);
+  useEffect(() => {
+    externalToastRef.current = showToastProp;
+  }, [showToastProp]);
+
+  // Internal fallback toast (rendered inside the provider tree) so the guard
+  // always has a way to surface errors even if no external toast is provided.
+  const [internalToasts, setInternalToasts] = useState<ToastItem[]>([]);
+  const internalShowToast = (message: string, type: ToastType = 'info', title?: string) => {
+    const id = `toast-${Date.now()}-${Math.random()}`;
+    setInternalToasts((prev) => [...prev, { id, type, title, message }]);
+    setTimeout(() => {
+      setInternalToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4500);
+  };
+  const notify = (message: string, type: ToastType = 'error') => {
+    // Priority: explicit prop > global ToastProvider instance > internal fallback host.
+    if (externalToastRef.current) externalToastRef.current(message, type);
+    else if (getGlobalToast()) getGlobalToast()!(message, type);
+    else internalShowToast(message, type);
+  };
+
+  /**
+   * CR-1: Guarded dispatch layer. Any action that mutates the displayed
+   * dataset is refused while viewing a year other than the active one, so
+   * archived historical records (including financial ones) can never be
+   * permanently altered.
+   */
+  const dispatch = (action: AppAction) => {
+    const cur = stateRef.current;
+    if (MUTATING_ACTION_TYPES.has(action.type) && cur.viewingYearId !== cur.activeYearId) {
+      notify(ARCHIVED_READONLY_MESSAGE, 'error');
+      return;
+    }
+    rawDispatch(action);
+  };
 
   useEffect(() => {
     try {
@@ -408,6 +514,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     dispatch({ type: 'SET_VIEWING_YEAR', payload: yearId });
   };
 
+  const removeInternalToast = (id: string) =>
+    setInternalToasts((prev) => prev.filter((t) => t.id !== id));
+
   return (
     <AppContext.Provider
       value={{
@@ -427,6 +536,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }}
     >
       {children}
+
+      {/* Fallback toast host for the CR-1 guarded-dispatch rejections when no
+          external showToast prop is injected. */}
+      {internalToasts.length > 0 && (
+        <div className="fixed bottom-5 left-5 z-[70] flex flex-col gap-2 pointer-events-none max-w-sm w-full" dir="rtl">
+          {internalToasts.map((toast) => {
+            let bgClass = 'bg-[#0A3528] text-white border-emerald-600';
+            let icon = <IconCheck size={18} className="text-emerald-400" />;
+            if (toast.type === 'error') {
+              bgClass = 'bg-[#451010] text-white border-red-500';
+              icon = <IconAlert size={18} className="text-red-400" />;
+            } else if (toast.type === 'info') {
+              bgClass = 'bg-[#18314F] text-white border-sky-500';
+              icon = <IconCheck size={18} className="text-sky-300" />;
+            }
+            return (
+              <div
+                key={toast.id}
+                className={`pointer-events-auto flex items-start gap-3 p-3.5 rounded-xl shadow-xl border text-sm ${bgClass}`}
+              >
+                <div className="mt-0.5 shrink-0">{icon}</div>
+                <div className="flex-1">
+                  {toast.title && <div className="font-semibold text-xs mb-0.5 opacity-90">{toast.title}</div>}
+                  <div className="text-sm leading-snug">{toast.message}</div>
+                </div>
+                <button
+                  onClick={() => removeInternalToast(toast.id)}
+                  className="opacity-70 hover:opacity-100 p-0.5 shrink-0 transition-opacity"
+                  aria-label="بستن"
+                >
+                  <IconClose size={16} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </AppContext.Provider>
   );
 
