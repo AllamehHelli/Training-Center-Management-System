@@ -18,6 +18,7 @@ import { buildSeedData, migrateLegacyData, maxRegistrationSeq, makeRegistrationC
 import { getTodayJalali, migrateSessionTimes } from './utils';
 import { ToastType, ToastItem, getGlobalToast } from './ui';
 import { IconAlert, IconCheck, IconClose } from './icons';
+import { BACKEND_ENABLED, serverApi, syncAction } from './api';
 
 const STORAGE_KEY = 'helli_institute_data_v2';
 
@@ -198,10 +199,14 @@ export type AppAction =
     }
   | { type: 'UPDATE_ACADEMIC_YEAR'; payload: Partial<AcademicYear> & { id: string } }
   | { type: 'ADD_ACADEMIC_YEAR'; payload: AcademicYear }
-  | { type: 'DELETE_ACADEMIC_YEAR'; payload: string };
+  | { type: 'DELETE_ACADEMIC_YEAR'; payload: string }
+  // Server truth replaces the local optimistic copy after login/refresh.
+  | { type: 'HYDRATE_FROM_SERVER'; payload: AppState };
 
 
 function appReducer(state: AppState, action: AppAction): AppState {
+  // Server truth wins wholesale on hydrate (login / refresh).
+  if (action.type === 'HYDRATE_FROM_SERVER') return action.payload;
   // ------------------------------------------------------------------
   // Tracking-code issuance (global uniqueness fix).
   //
@@ -766,7 +771,98 @@ export const AppProvider: React.FC<{
       downloadStateBackup(cur);
     }
     rawDispatch(action);
+
+    // Backend sync (production mode): when VITE_API_BASE is set, every
+    // mutating action is mirrored to the REST API after it has been applied
+    // locally. The reducer keeps its guards as the first validation layer;
+    // the server re-validates everything (second defense layer). On failure
+    // we surface an error toast — the local optimistic copy will be replaced
+    // by server truth on the next load/refresh.
+    if (BACKEND_ENABLED && MUTATING_ACTION_TYPES.has(action.type)) {
+      // Composite year rollover: archive the outgoing (currently active) year
+      // and register the new one server-side. The reducer already computed
+      // state.activeYearId BEFORE this action, so we read it from stateRef.
+      if (action.type === 'ARCHIVE_AND_START_NEW_YEAR') {
+        const p = action.payload as { newYear?: { id: string; title?: string; shortTitle?: string; periodLabel?: string } };
+        const archivedYearId = cur.activeYearId;
+        const label = p.newYear?.periodLabel || p.newYear?.title || p.newYear?.shortTitle || '';
+        void (async () => {
+          if (archivedYearId) await serverApi.post(`/years/${archivedYearId}/archive`, {});
+          if (p.newYear?.id) await serverApi.post('/years', { id: p.newYear.id, label });
+        })().catch((e: Error) => notify(`خطا در بایگانی/شروع سال سمت سرور: ${e.message}`, 'error'));
+        return;
+      }
+      // Installment pay/refund have installment-scoped REST routes; mirror
+      // them through the custom event consumed by the listener below.
+      if (action.type === 'MARK_INSTALLMENT_PAID' || action.type === 'REFUND_INSTALLMENT') {
+        const p = action.payload as { regId: string; instId: string; paidAt?: string };
+        window.dispatchEvent(new CustomEvent('helli:payment-event', {
+          detail: {
+            regId: p.regId, instId: p.instId,
+            kind: action.type === 'MARK_INSTALLMENT_PAID' ? 'pay' : 'refund',
+            paidDate: p.paidAt || '',
+          },
+        }));
+        return;
+      }
+      void syncAction(action as { type: string; payload?: any }).catch((e: Error & { status?: number }) => {
+        console.error('backend sync failed:', action.type, e);
+        notify(
+          e.status === 409 ? 'ثبت تکراری رد شد. صفحه را بازخوانی کنید.'
+          : e.status === 423 ? 'این سال تحصیلی بایگانی شده و فقط‌خواندنی است.'
+          : e.status === 401 ? 'جلسه تمام شده است؛ دوباره وارد شوید.'
+          : `خطا در ذخیره‌سازی سمت سرور: ${e.message}`,
+          'error'
+        );
+      });
+    }
   };
+
+  // Payment events need their dedicated server routes (installment-scoped),
+  // so they are handled through a custom DOM event fired by Finance/Registrations
+  // alongside the reducer action. This keeps the reducer pure.
+  useEffect(() => {
+    if (!BACKEND_ENABLED) return;
+    const handler = (ev: Event) => {
+      const d = (ev as CustomEvent).detail as { regId: string; instId: string; kind: 'pay' | 'refund'; paidDate?: string };
+      const path = `/registrations/${d.regId}/installments/${d.instId}/${d.kind === 'pay' ? 'pay' : 'refund'}`;
+      void serverApi.post(path, { paidDate: d.paidDate || '' }).catch((e: Error & { status?: number }) => {
+        notify(e.status === 423 ? 'این سال بایگانی‌شده و فقط‌خواندنی است.' : `خطا در ثبت پرداخت سمت سرور: ${e.message}`, 'error');
+      });
+    };
+    window.addEventListener('helli:payment-event', handler);
+    return () => window.removeEventListener('helli:payment-event', handler);
+  }, []);
+
+  // Server-state hydration: AuthGate fetches GET /api/state after login and
+  // broadcasts it here so the whole app switches from the local optimistic
+  // copy to the database truth (multi-user consistency).
+  useEffect(() => {
+    if (!BACKEND_ENABLED) return;
+    const onServerState = (ev: Event) => {
+      const st = (ev as CustomEvent).detail as any;
+      // The reducer keeps archived snapshots inside academicYears[].archivedData.
+      const yearsWithArchive = (st.academicYears || []).map((y: any) => ({
+        ...y,
+        archivedData: st.archivedData?.[y.id] ?? y.archivedData ?? null,
+      }));
+      rawDispatch({
+        type: 'HYDRATE_FROM_SERVER',
+        payload: {
+          academicYears: yearsWithArchive,
+          activeYearId: st.activeYearId || '',
+          viewingYearId: st.viewingYearId || st.activeYearId || '',
+          students: st.students || [],
+          classes: st.classes || [],
+          registrations: st.registrations || [],
+          wooSettings: { ...(stateRef.current.wooSettings || {} as any), ...(st.settings?.wooPublic || {}) },
+          nextRegSeq: Number(st.nextRegSeq || 0),
+        } as AppState,
+      });
+    };
+    window.addEventListener('helli:server-state', onServerState);
+    return () => window.removeEventListener('helli:server-state', onServerState);
+  }, []);
 
   useEffect(() => {
     try {
