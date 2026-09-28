@@ -1,1 +1,16 @@
-(empty)
+<<<<<<< HEAD
+node_modules/
+dist/
+.env
+.env.local
+*.local
+.DS_Store
+server/node_modules/
+server/.env
+
+test-*.mjs
+=======
+# Temp files
+*.tmp
+>>>>>>> fix/critical-high-findings-cr1-cr3-hi1-hi2
+test-*.tmp.ts
