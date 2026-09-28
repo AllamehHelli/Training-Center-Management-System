@@ -60,4 +60,4 @@ app.use((err, _req, res, _next) => {
 });
 
 const PORT = Number(process.env.PORT || 3777);
-app.listen(PORT, '127.0.0.1', () => console.log(`server up on 127.0.0.1:${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`server up on 0.0.0.0:${PORT}`));
