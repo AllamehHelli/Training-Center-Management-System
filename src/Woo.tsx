@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { useAppStore } from './store';
+import { useAppStore, hasWooCredentials } from './store';
 import { toPersianDigits, getTodayJalali, formatToman, validateNationalId, toEnglishDigits } from './utils';
 import { ClassRoom, Student, Registration } from './types';
 import { useToast, Field, InfoTooltip } from './ui';
@@ -95,12 +95,14 @@ export const Woo: React.FC = () => {
       type: 'UPDATE_WOO_SETTINGS',
       payload: {
         url: url.trim(),
+        // CR-4: keys are kept in memory for this browser session only — the
+        // persistence layer strips them before writing to localStorage.
         consumerKey: consumerKey.trim(),
         consumerSecret: consumerSecret.trim(),
         proxyBaseUrl: proxyBaseUrl.trim(),
       },
     });
-    showToast('تنظیمات اتصال ووکامرس ذخیره شد', 'success');
+    showToast('تنظیمات اتصال ووکامرس ذخیره شد (کلیدها فقط برای همین نشست مرورگر نگه‌داشته می‌شوند)', 'success');
   };
 
   // HI-5: real connectivity test. Status is derived ONLY from an actual HTTP
@@ -128,8 +130,15 @@ export const Woo: React.FC = () => {
   };
 
   const handleTestConnection = async () => {
+    // CR-4: credentials are session-only and never persisted. After a reload
+    // (or on a different tab) they must be re-entered before testing.
     if (!url || !consumerKey || !consumerSecret) {
-      showToast('لطفاً آدرس فروشگاه و هر دو کلید API را وارد کنید', 'error');
+      showToast(
+        hasWooCredentials(state.wooSettings)
+          ? 'لطفاً آدرس فروشگاه و هر دو کلید API را وارد کنید'
+          : 'کلیدها در این نشست وارد نشده‌اند (به‌دلیل امنیت ذخیره نمی‌شوند). لطفاً پس از بارگذاری مجدد صفحه، هر دو کلید را دوباره وارد کنید.',
+        'error'
+      );
       return;
     }
 
@@ -485,6 +494,10 @@ export const Woo: React.FC = () => {
                 «آزمایش اعتبار اتصال» تنها در صورتی نتیجه معتبر دارد که یک <strong>پروکسی سمت سرور</strong> پیکربندی شده باشد؛
                 انتشار مستقیم کلیدهای Woo در فرانت‌اند امن نیست. آدرس پروکسی را در فیلد زیر یا متغیر محیطی{' '}
                 <code dir="ltr" className="font-mono">VITE_WOO_PROXY_BASE</code> وارد کنید.
+                <span className="block mt-1 font-bold text-red-700">
+                  هشدار: اگر کلیدی هرگز در این صفحه ذخیره شده باشد، آن را در پیشخوان ووکامرس باطل (Revoke) و کلید جدید بسازید؛
+                  نسخه‌های قبلی کلیدها را به‌صورت متن ساده در localStorage نگه می‌داشتند که اکنون پاک‌سازی می‌شود.
+                </span>
               </div>
             </div>
 
@@ -500,10 +513,12 @@ export const Woo: React.FC = () => {
                 />
               </Field>
 
-              <Field label="شناسه کاربری ووکامرس (کلید دسترسی)" required hint="شناسه تولید شده در بخش وب‌سرویس ووکامرس">
+              <Field label="شناسه کاربری ووکامرس (کلید دسترسی)" required hint="کلید ck_ تولید شده در بخش وب‌سرویس ووکامرس — فقط در همین نشست مرورگر نگه‌داشته می‌شود و در localStorage ذخیره نمی‌گردد">
                 <input
                   type="text"
                   dir="ltr"
+                  autoComplete="off"
+                  spellCheck={false}
                   value={consumerKey}
                   onChange={(e) => setConsumerKey(e.target.value)}
                   placeholder="ck_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
@@ -511,11 +526,13 @@ export const Woo: React.FC = () => {
                 />
               </Field>
 
-              <Field label="رمز امنیتی وب‌سایت (کلید اختصاصی)" required hint="رمز امنیتی تولید شده در پنل وردپرس">
+              <Field label="رمز امنیتی وب‌سایت (کلید اختصاصی)" required hint="کلید cs_ پنل وردپرس — فقط در حافظه‌ی همین نشست می‌ماند و پس از بستن صفحه باید دوباره وارد شود. برای خارج‌کردن کامل کلید از مرورگر، پروکسی سمت سرور را پیکربندی کنید.">
                 <div className="relative">
                   <input
                     type={showSecret ? 'text' : 'password'}
                     dir="ltr"
+                    autoComplete="new-password"
+                    spellCheck={false}
                     value={consumerSecret}
                     onChange={(e) => setConsumerSecret(e.target.value)}
                     placeholder="cs_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
