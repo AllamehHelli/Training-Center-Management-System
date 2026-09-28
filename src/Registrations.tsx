@@ -35,6 +35,7 @@ import {
 } from './icons';
 import { LogoHelli } from './Logo';
 import { JalaliDatePicker } from './JalaliDatePicker';
+import { PaymentDateModal } from './components/PaymentDateModal';
 import { StudentDossierModal } from './components/StudentDossierModal';
 
 export const Registrations: React.FC = () => {
@@ -56,7 +57,21 @@ export const Registrations: React.FC = () => {
 
   // Modals state
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
-  const [receiptRegistration, setReceiptRegistration] = useState<Registration | null>(null);
+  // HI-4: store only the id; the receipt object is derived from state on every
+  // render so it always reflects the latest payments (no stale closure/setTimeout).
+  const [receiptRegistrationId, setReceiptRegistrationId] = useState<string | null>(null);
+  const receiptRegistration = receiptRegistrationId
+    ? state.registrations.find((r) => r.id === receiptRegistrationId) ?? null
+    : null;
+  // HI-4: pending installment payment initiated from the receipt (shared modal with Finance page)
+  const [pendingReceiptPayment, setPendingReceiptPayment] = useState<{
+    regId: string;
+    instId: string;
+    title: string;
+    amount: number;
+    dueDate: string;
+    studentName: string;
+  } | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [selectedDossierRegId, setSelectedDossierRegId] = useState<string | null>(null);
 
@@ -226,7 +241,7 @@ export const Registrations: React.FC = () => {
     dispatch({ type: 'ADD_REGISTRATION', payload: newReg });
     showToast(`ثبت‌نام جدید با کد پیگیری ${newCode} با موفقیت ثبت شد`, 'success');
     setIsNewModalOpen(false);
-    setReceiptRegistration(newReg);
+    setReceiptRegistrationId(newReg.id);
   };
 
   // CSV Export
@@ -290,27 +305,58 @@ export const Registrations: React.FC = () => {
     );
   };
 
-  // Payment Toggle on receipt
-  const handleTogglePayment = (regId: string, instId: string, isPaid: boolean) => {
+  // HI-4: Payment actions on the receipt. The receipt itself is derived from
+  // state.registrations every render (see receiptRegistrationId), so no
+  // setTimeout / stale-closure refresh is needed anymore.
+
+  // Refund (un-pay) an installment directly from the receipt
+  const handleReceiptRefund = (regId: string, instId: string) => {
     if (isViewingArchived) {
       showToast(ARCHIVED_READONLY_MESSAGE, 'error');
       return;
     }
-    if (isPaid) {
-      dispatch({ type: 'REFUND_INSTALLMENT', payload: { regId, instId } });
-      showToast('پرداخت قسط عودت داده شد', 'info');
-    } else {
-      dispatch({ type: 'MARK_INSTALLMENT_PAID', payload: { regId, instId } });
-      showToast('پرداخت قسط با موفقیت ثبت شد', 'success');
-    }
+    dispatch({ type: 'REFUND_INSTALLMENT', payload: { regId, instId } });
+    showToast('پرداخت قسط عودت داده شد', 'info');
+  };
 
-    // Refresh active receipt registration object
-    setTimeout(() => {
-      const updated = state.registrations.find((r) => r.id === regId);
-      if (updated) {
-        setReceiptRegistration({ ...updated });
-      }
-    }, 50);
+  // Opening a payment asks for the Jalali payment date first (same modal as Finance page)
+  const handleReceiptRequestPayment = (
+    regId: string,
+    inst: { id: string; title: string; amount: number; dueDate: string },
+    studentName: string
+  ) => {
+    if (isViewingArchived) {
+      showToast(ARCHIVED_READONLY_MESSAGE, 'error');
+      return;
+    }
+    setPendingReceiptPayment({
+      regId,
+      instId: inst.id,
+      title: inst.title,
+      amount: inst.amount,
+      dueDate: inst.dueDate,
+      studentName,
+    });
+  };
+
+  // Confirm the payment with the chosen date (dispatch paidAt, like Finance.tsx)
+  const handleReceiptConfirmPayment = (paidAt: string) => {
+    if (!pendingReceiptPayment) return;
+    if (isViewingArchived) {
+      showToast(ARCHIVED_READONLY_MESSAGE, 'error');
+      setPendingReceiptPayment(null);
+      return;
+    }
+    dispatch({
+      type: 'MARK_INSTALLMENT_PAID',
+      payload: {
+        regId: pendingReceiptPayment.regId,
+        instId: pendingReceiptPayment.instId,
+        paidAt,
+      },
+    });
+    showToast('پرداخت قسط با موفقیت ثبت شد', 'success');
+    setPendingReceiptPayment(null);
   };
 
   return (
@@ -559,7 +605,7 @@ export const Registrations: React.FC = () => {
                           {/* Receipt */}
                           <button
                             type="button"
-                            onClick={() => setReceiptRegistration(reg)}
+                            onClick={() => setReceiptRegistrationId(reg.id)}
                             className="p-1.5 text-slate-600 hover:text-[#0E7C5B] hover:bg-emerald-50 rounded-lg transition-colors"
                             title="رسید و دفترچه اقساط"
                           >
@@ -1014,7 +1060,7 @@ export const Registrations: React.FC = () => {
       {receiptRegistration && (
         <Modal
           isOpen={!!receiptRegistration}
-          onClose={() => setReceiptRegistration(null)}
+          onClose={() => setReceiptRegistrationId(null)}
           title={`رسید رسمی ثبت‌نام - کد پیگیری ${receiptRegistration.code}`}
           maxWidth="3xl"
         >
@@ -1194,11 +1240,20 @@ export const Registrations: React.FC = () => {
                                   <button
                                     type="button"
                                     onClick={() =>
-                                      handleTogglePayment(
-                                        receiptRegistration.id,
-                                        inst.id,
-                                        Boolean(inst.paidAt)
-                                      )
+                                      inst.paidAt
+                                        ? handleReceiptRefund(receiptRegistration.id, inst.id)
+                                        : handleReceiptRequestPayment(
+                                            receiptRegistration.id,
+                                            {
+                                              id: inst.id,
+                                              title: inst.title,
+                                              amount: inst.amount,
+                                              dueDate: inst.dueDate,
+                                            },
+                                            student
+                                              ? `${student.firstName} ${student.lastName}`
+                                              : 'نامشخص'
+                                          )
                                     }
                                     className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${
                                       inst.paidAt
@@ -1233,6 +1288,19 @@ export const Registrations: React.FC = () => {
             );
           })()}
         </Modal>
+      )}
+
+      {/* HI-4: Shared payment-date modal (same as Finance page) for receipt payments */}
+      {pendingReceiptPayment && (
+        <PaymentDateModal
+          isOpen={Boolean(pendingReceiptPayment)}
+          onClose={() => setPendingReceiptPayment(null)}
+          studentName={pendingReceiptPayment.studentName}
+          installmentTitle={pendingReceiptPayment.title}
+          amount={pendingReceiptPayment.amount}
+          dueDate={pendingReceiptPayment.dueDate}
+          onConfirm={handleReceiptConfirmPayment}
+        />
       )}
 
       {/* Student Dossier Modal */}

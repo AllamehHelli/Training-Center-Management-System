@@ -278,7 +278,7 @@ export const JalaliDatePicker: React.FC<JalaliDatePickerProps> = ({
     return false;
   };
 
-  // Year options for fast select (anchored around active year 1403)
+  // HI-6: year options are anchored around the REAL current Jalali year (getTodayJalali)
   const currentJalaliYear = parsedToday.year;
   const yearOptions: number[] = [];
   for (let y = currentJalaliYear - 6; y <= currentJalaliYear + 4; y++) {

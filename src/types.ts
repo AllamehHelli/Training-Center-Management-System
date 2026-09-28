@@ -130,6 +130,12 @@ export interface WooSettings {
   isConnected: boolean;
   lastSync?: string;
   syncLog: SyncLogItem[];
+  /** HI-5: optional backend proxy base (e.g. https://api.example.com/woo-proxy)
+   *  used to call the WooCommerce REST API without exposing keys in the browser. */
+  proxyBaseUrl?: string;
+  /** HI-5: false only when a real (non-simulated) integration is wired up.
+   *  Defaults to true — products/orders in this build are sample data. */
+  simulationMode?: boolean;
 }
 
 export interface AcademicYearDataSnapshot {

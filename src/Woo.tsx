@@ -97,12 +97,36 @@ export const Woo: React.FC = () => {
         url: url.trim(),
         consumerKey: consumerKey.trim(),
         consumerSecret: consumerSecret.trim(),
+        proxyBaseUrl: proxyBaseUrl.trim(),
       },
     });
     showToast('تنظیمات اتصال ووکامرس ذخیره شد', 'success');
   };
 
-  // Test Real Connection
+  // HI-5: real connectivity test. Status is derived ONLY from an actual HTTP
+  // response (via backend proxy when configured, otherwise direct). Every
+  // failure path — wrong keys, non-2xx, network/CORS — records isConnected:false.
+  const [proxyBaseUrl, setProxyBaseUrl] = useState(state.wooSettings.proxyBaseUrl || '');
+
+  const buildWooTestUrl = (cleanUrl: string) => {
+    const api = cleanUrl + '/wp-json/wc/v3?consumer_key=' + encodeURIComponent(consumerKey) +
+      '&consumer_secret=' + encodeURIComponent(consumerSecret);
+    const envProxy = ((import.meta as any).env?.VITE_WOO_PROXY_BASE as string | undefined)?.trim() || '';
+    const proxy = proxyBaseUrl.trim() || envProxy;
+    if (!proxy) return { target: api, viaProxy: false };
+    if (/^https?:/i.test(proxy)) {
+      return { target: proxy.replace(/\/+$/, '') + '?url=' + encodeURIComponent(api), viaProxy: true };
+    }
+    return { target: proxy + '?url=' + encodeURIComponent(api), viaProxy: true };
+  };
+
+  const logWoo = (message: string, type: 'success' | 'error' | 'info') => {
+    dispatch({
+      type: 'ADD_WOO_LOG',
+      payload: { time: getTodayJalali(), message, type },
+    });
+  };
+
   const handleTestConnection = async () => {
     if (!url || !consumerKey || !consumerSecret) {
       showToast('لطفاً آدرس فروشگاه و هر دو کلید API را وارد کنید', 'error');
@@ -111,58 +135,46 @@ export const Woo: React.FC = () => {
 
     setIsTesting(true);
     const logTime = getTodayJalali();
+    const cleanUrl = url.replace(/\/+$/, '');
+    const { target, viaProxy } = buildWooTestUrl(cleanUrl);
+
+    let ok = false;
+    let failMessage = '';
 
     try {
-      // In web browser, direct REST API calls to 3rd party domain might hit CORS.
-      // We test endpoint and provide friendly feedback:
-      const cleanUrl = url.replace(/\/+$/, '');
-      const testEndpoint = `${cleanUrl}/wp-json/wc/v3/products?per_page=1`;
-
-      const response = await fetch(testEndpoint, {
-        method: 'GET',
-        headers: {
-          Authorization: 'Basic ' + btoa(`${consumerKey}:${consumerSecret}`),
-        },
-      }).catch((err) => {
-        // Fallback for CORS sandbox or offline mode
-        throw new Error('CORS / شبکه: اتصال در حالت شبیه‌ساز تأیید شد');
-      });
-
-      if (response && response.ok) {
-        dispatch({
-          type: 'UPDATE_WOO_SETTINGS',
-          payload: { isConnected: true, lastSync: `${logTime} - ساعت موفقیت‌آمیز` },
-        });
-        dispatch({
-          type: 'ADD_WOO_LOG',
-          payload: {
-            time: logTime,
-            message: 'اتصال زنده به REST API ووکامرس با موفقیت برقرار شد (HTTP 200).',
-            type: 'success',
-          },
-        });
-        showToast('ارتباط با سرور ووکامرس با موفقیت تأیید شد', 'success');
+      const response = await fetch(target, { method: 'GET' });
+      if (response.ok) {
+        ok = true;
+      } else if (response.status === 401 || response.status === 403) {
+        failMessage = 'کلیدهای مصرف‌کننده نامعتبرند یا دسترسی REST در ووکامرس غیرفعال است (HTTP ' + toPersianDigits(String(response.status)) + ').';
       } else {
-        throw new Error('پاسخ سرور ناموفق بود.');
+        failMessage = 'پاسخ ناموفق سرور ووکامرس (HTTP ' + toPersianDigits(String(response.status)) + ').';
       }
-    } catch (err: any) {
-      // Simulator fallback approval
+    } catch {
+      failMessage = viaProxy
+        ? 'خطا در تماس با پروکسی بک‌اند؛ از درستی آدرس پروکسی / VITE_WOO_PROXY_BASE و فعال بودن آن اطمینان حاصل کنید.'
+        : 'خطای شبکه یا CORS — مرورگر اجازه تماس مستقیم با دامنه فروشگاه را نداد. برای اتصال عملیاتی، پروکسی سمت سرور ضروری است.';
+    }
+
+    if (ok) {
       dispatch({
         type: 'UPDATE_WOO_SETTINGS',
-        payload: { isConnected: true, lastSync: `${logTime} - تأیید آزمایشی` },
-      });
-      dispatch({
-        type: 'ADD_WOO_LOG',
         payload: {
-          time: logTime,
-          message: `تست اتصال ووکامرس: احراز هویت کلیدها با موفقیت انجام پذیرفت (${err.message}).`,
-          type: 'info',
+          isConnected: true,
+          lastSync: logTime + ' - تست موفق (' + (viaProxy ? 'از طریق پروکسی' : 'تماس مستقیم') + ')',
         },
       });
-      showToast('کلیدهای دسترسی ووکامرس فعال و آماده همگام‌سازی هستند', 'info');
-    } finally {
-      setIsTesting(false);
+      logWoo('تست اتصال زنده به REST API ووکامرس با موفقیت انجام شد (HTTP 2xx).', 'success');
+      showToast('ارتباط واقعی با سرور ووکامرس تأیید شد', 'success');
+    } else {
+      dispatch({
+        type: 'UPDATE_WOO_SETTINGS',
+        payload: { isConnected: false, lastSync: logTime + ' - تست ناموفق' },
+      });
+      logWoo('تست اتصال ووکامرس ناموفق بود: ' + failMessage, 'error');
+      showToast(failMessage, 'error');
     }
+    setIsTesting(false);
   };
 
   // Sync Products -> Classes
@@ -465,6 +477,17 @@ export const Woo: React.FC = () => {
           <div className="bg-white rounded-3xl p-6 border border-neutral-200/70 shadow-xs">
             <h3 className="text-lg font-heading font-bold text-neutral-900 mb-4">تنظیمات اتصال به فروشگاه اینترنتی</h3>
 
+            {/* HI-5: honest disclosure about how connectivity works in this build */}
+            <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900">
+              <IconAlert size={16} className="shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold">حالت آزمایشی:</span> محصولات و سفارش‌های این صفحه نمونه/ساختگی هستند.
+                «آزمایش اعتبار اتصال» تنها در صورتی نتیجه معتبر دارد که یک <strong>پروکسی سمت سرور</strong> پیکربندی شده باشد؛
+                انتشار مستقیم کلیدهای Woo در فرانت‌اند امن نیست. آدرس پروکسی را در فیلد زیر یا متغیر محیطی{' '}
+                <code dir="ltr" className="font-mono">VITE_WOO_PROXY_BASE</code> وارد کنید.
+              </div>
+            </div>
+
             <form onSubmit={handleSaveSettings} className="space-y-4">
               <Field label="آدرس اینترنتی وب‌سایت آموزشگاه" required hint="با پیشوند اینترنتی و بدون خط تیره یا اسلش انتهایی">
                 <input
@@ -507,6 +530,18 @@ export const Woo: React.FC = () => {
                     {showSecret ? <IconEyeOff size={16} /> : <IconEye size={16} />}
                   </button>
                 </div>
+              </Field>
+
+              {/* HI-5: backend proxy configuration */}
+              <Field label="آدرس پروکسی سمت سرور (اختیاری – توصیه‌شده)" hint="مانند https://api.example.com/woo-proxy یا /api/woo-proxy — برای عبور امن از CORS و عدم افشای کلیدها">
+                <input
+                  type="text"
+                  dir="ltr"
+                  value={proxyBaseUrl}
+                  onChange={(e) => setProxyBaseUrl(e.target.value)}
+                  placeholder="/api/woo-proxy"
+                  className="w-full px-3.5 py-2 text-xs bg-neutral-50 border border-neutral-200 rounded-xl focus:outline-hidden focus:border-neutral-900 font-mono focus:bg-white text-left"
+                />
               </Field>
 
               <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-neutral-100">
