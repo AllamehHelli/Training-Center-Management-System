@@ -16,6 +16,7 @@ import {
   formatToman,
 } from './utils';
 import { Student, PhoneNumber, StudentGrade } from './types';
+import { validateStudent, buildStudentFromInput } from './studentValidation';
 import { Modal, ConfirmModal, Avatar, useToast, Field, InfoTooltip } from './ui';
 import {
   IconPlus,
@@ -131,108 +132,37 @@ export const Students: React.FC = () => {
     setFormPhones((prev) => prev.filter((p) => p.id !== id));
   };
 
-  // Form Validation & Submit
+  // Form Validation & Submit (HI-2: shared validateStudent from studentValidation.ts)
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const errors: Record<string, string> = {};
 
-    // Validate fields according to fieldSettings
-    if (fieldSettings.firstName && !formFirstName.trim()) {
-      errors.firstName = 'نام کوچک دانش‌آموز الزامی است';
-    }
-    if (fieldSettings.lastName && !formLastName.trim()) {
-      errors.lastName = 'نام خانوادگی الزامی است';
-    }
-    if (fieldSettings.fatherName && !formFatherName.trim()) {
-      errors.fatherName = 'نام پدر الزامی است';
-    }
+    const input = {
+      firstName: formFirstName,
+      lastName: formLastName,
+      fatherName: formFatherName,
+      nationalId: formNationalId,
+      grade: formGrade,
+      gpa: formGpa,
+      school: formSchool,
+      phones: formPhones,
+    };
 
-    // National ID
-    if (fieldSettings.nationalId) {
-      const nidCheck = validateNationalId(formNationalId);
-      if (!nidCheck.isValid) {
-        errors.nationalId = nidCheck.message;
-      } else {
-        // Check uniqueness
-        const dup = state.students.find(
-          (s) => s.nationalId === toEnglishDigits(formNationalId) && s.id !== editingStudent?.id
-        );
-        if (dup) {
-          errors.nationalId = 'کد ملی وارد شده قبلاً برای دانش‌آموز دیگری ثبت شده است';
-        }
-      }
-    }
-
-    // GPA
-    const gpaNum = parseFloat(toEnglishDigits(formGpa));
-    if (fieldSettings.gpa) {
-      if (isNaN(gpaNum) || gpaNum < 0 || gpaNum > 20) {
-        errors.gpa = 'معدل باید عددی بین ۰ تا ۲۰ باشد';
-      }
-    }
-
-    // School
-    if (fieldSettings.school && !formSchool.trim()) {
-      errors.school = 'نام مدرسه فعلی الزامی است';
-    }
-
-    // Phones
-    if (fieldSettings.phones) {
-      if (formPhones.length === 0) {
-        errors.phones = 'حداقل یک شماره تماس الزامی است';
-      } else {
-        let phoneErr = '';
-        for (let i = 0; i < formPhones.length; i++) {
-          const ph = formPhones[i];
-          const check = validateIranianMobile(ph.number);
-          if (!check.isValid) {
-            phoneErr = `ردیف ${toPersianDigits(i + 1)} (${ph.label}): ${check.message}`;
-            break;
-          }
-        }
-        if (phoneErr) {
-          errors.phones = phoneErr;
-        }
-      }
-    }
+    const errors = validateStudent(input, fieldSettings, state.students, editingStudent?.id);
 
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
       return;
     }
 
-    const cleanPhones = formPhones.map((p) => ({
-      ...p,
-      number: toEnglishDigits(p.number).trim(),
-    }));
-
     if (editingStudent) {
-      const updated: Student = {
-        ...editingStudent,
-        firstName: formFirstName.trim(),
-        lastName: formLastName.trim(),
-        fatherName: formFatherName.trim(),
-        nationalId: toEnglishDigits(formNationalId).trim(),
-        grade: formGrade,
-        gpa: isNaN(gpaNum) ? 20.0 : gpaNum,
-        school: formSchool.trim(),
-        phones: cleanPhones,
-      };
+      const updated = buildStudentFromInput(input, editingStudent);
       dispatch({ type: 'UPDATE_STUDENT', payload: updated });
       showToast('اطلاعات دانش‌آموز با موفقیت به‌روزرسانی شد', 'success');
     } else {
-      const newStudent: Student = {
+      const newStudent = buildStudentFromInput(input, {
         id: `std-${Date.now()}`,
-        firstName: formFirstName.trim(),
-        lastName: formLastName.trim(),
-        fatherName: formFatherName.trim(),
-        nationalId: toEnglishDigits(formNationalId).trim(),
-        grade: formGrade,
-        gpa: isNaN(gpaNum) ? 20.0 : gpaNum,
-        school: formSchool.trim(),
-        phones: cleanPhones,
         createdAt: getTodayJalali(),
-      };
+      });
       dispatch({ type: 'ADD_STUDENT', payload: newStudent });
       showToast(`پرونده دانش‌آموز ${newStudent.firstName} ${newStudent.lastName} تشکیل شد`, 'success');
     }
