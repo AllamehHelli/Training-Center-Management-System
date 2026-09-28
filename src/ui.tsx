@@ -223,6 +223,11 @@ interface ConfirmModalProps {
   confirmText?: string;
   cancelText?: string;
   danger?: boolean;
+  /**
+   * HI-1: when set, the confirm button stays disabled until the user types
+   * this exact phrase into the input field (friction for destructive actions).
+   */
+  requirePhrase?: string;
 }
 
 export const ConfirmModal: React.FC<ConfirmModalProps> = ({
@@ -234,13 +239,39 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   confirmText = 'تأیید و ادامه',
   cancelText = 'انصراف',
   danger = true,
+  requirePhrase,
 }) => {
+  const [typedPhrase, setTypedPhrase] = useState('');
+  const phraseOk = !requirePhrase || typedPhrase.trim() === requirePhrase;
+
+  // Reset the typed confirmation whenever the modal is (re)opened.
+  useEffect(() => {
+    if (isOpen) setTypedPhrase('');
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} maxWidth="md">
       <div className="space-y-4">
         <p className="text-sm text-slate-600 leading-relaxed">{description}</p>
+        {requirePhrase && (
+          <div className="space-y-1.5">
+            <label htmlFor="confirm-phrase-input" className="block text-xs font-medium text-rose-700">
+              برای تأیید، عبارت «{requirePhrase}» را دقیقاً وارد کنید:
+            </label>
+            <input
+              id="confirm-phrase-input"
+              type="text"
+              dir="rtl"
+              autoComplete="off"
+              value={typedPhrase}
+              onChange={(e) => setTypedPhrase(e.target.value)}
+              placeholder={requirePhrase}
+              className="w-full rounded-xl border border-rose-200 bg-rose-50/40 px-3 py-2 text-xs text-slate-800 outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100"
+            />
+          </div>
+        )}
         <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-neutral-100">
           <button
             type="button"
@@ -251,11 +282,14 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
           </button>
           <button
             type="button"
+            disabled={!phraseOk}
             onClick={() => {
+              if (!phraseOk) return;
+              setTypedPhrase('');
               onConfirm();
               onClose();
             }}
-            className={`px-5 py-2 text-xs font-medium text-white rounded-full transition-colors shadow-2xs ${
+            className={`px-5 py-2 text-xs font-medium text-white rounded-full transition-colors shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed ${
               danger ? 'bg-rose-600 hover:bg-rose-700' : 'bg-neutral-900 hover:bg-neutral-800'
             }`}
           >
