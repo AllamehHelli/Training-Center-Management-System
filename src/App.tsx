@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { AppProvider, useAppStore } from './store';
+import { AppProvider, useAppStore, DEMO_TOOLS_ENABLED } from './store';
 import { SettingsProvider } from './Settings';
 import { ToastProvider, useToast, ConfirmModal } from './ui';
 import { getTodayJalali, toPersianDigits, downloadCSV } from './utils';
@@ -200,20 +200,25 @@ const AppContent: React.FC = () => {
             </div>
           </div>
 
-          {/* Reset Demo Data Button */}
-          <div className="relative group">
-            <button
-              type="button"
-              onClick={() => setIsResetConfirmOpen(true)}
-              aria-label="بازنشانی داده‌های نمونه اولیه"
-              className="p-3 rounded-2xl text-neutral-400 hover:text-rose-600 hover:bg-rose-50 transition-all flex items-center justify-center"
-            >
-              <RotateCcw size={19} strokeWidth={1.8} />
-            </button>
-            <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 px-3 py-1.5 bg-neutral-900 text-white text-xs font-medium rounded-xl whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-150 shadow-lg z-50">
-              بازنشانی داده‌های آزمایشی
+          {/* HI-1: Reset Demo Data Button — hidden entirely in operational
+              builds; only available when demo tools are enabled (DEV mode or
+              VITE_ENABLE_DEMO_TOOLS=true). Even then it requires typing a
+              confirmation phrase and downloads an automatic backup first. */}
+          {DEMO_TOOLS_ENABLED && (
+            <div className="relative group">
+              <button
+                type="button"
+                onClick={() => setIsResetConfirmOpen(true)}
+                aria-label="بازنشانی داده‌های نمونه اولیه"
+                className="p-3 rounded-2xl text-neutral-400 hover:text-rose-600 hover:bg-rose-50 transition-all flex items-center justify-center"
+              >
+                <RotateCcw size={19} strokeWidth={1.8} />
+              </button>
+              <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 px-3 py-1.5 bg-neutral-900 text-white text-xs font-medium rounded-xl whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-150 shadow-lg z-50">
+                بازنشانی داده‌های آزمایشی
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </aside>
 
@@ -373,16 +378,18 @@ const AppContent: React.FC = () => {
         onNavigate={(view) => setCurrentView(view)}
       />
 
-      {/* Reset Confirmation Modal */}
+      {/* HI-1: Reset Confirmation Modal — requires typing the exact phrase,
+          and the store layer downloads a full JSON backup before resetting. */}
       <ConfirmModal
         isOpen={isResetConfirmOpen}
         onClose={() => setIsResetConfirmOpen(false)}
         onConfirm={handleResetData}
         title="بازنشانی داده‌ها به حالت اولیه"
-        description="آیا مایلید تمام داده‌های ثبت‌نام‌ها، دوره‌ها و دانش‌آموزان به داده‌های پیش‌فرض بازگردانی شوند؟"
+        description="هشدار: این کار تمام اطلاعات سامانه شامل سال‌های تحصیلی بایگانی‌شده و سوابق مالی را با داده‌های نمونه جایگزین می‌کند و قابل بازگشت نیست. پیش از بازنشانی، یک فایل پشتیبان JSON به‌صورت خودکار دانلود می‌شود؛ لطفاً آن را نگه دارید."
         confirmText="بله، بازنشانی اطلاعات"
         cancelText="انصراف"
         danger={true}
+        requirePhrase="بازنشانی کن"
       />
     </div>
   );

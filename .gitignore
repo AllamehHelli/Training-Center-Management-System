@@ -1,6 +1,6 @@
-# Dependencies
-node_modules/
+# Build artifacts
+dist/
 
-# Environment
-.env
+# Environment files
 .env.local
+.env.*.local

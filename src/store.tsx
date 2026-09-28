@@ -22,6 +22,46 @@ import { IconAlert, IconCheck, IconClose } from './icons';
 const STORAGE_KEY = 'helli_institute_data_v2';
 
 /**
+ * HI-1: RESET_DATA is a destructive demo-only action that replaces the entire
+ * state (including archived academic years) with seed data. It must never be
+ * reachable in an operational build, so it is gated behind an explicit env
+ * flag in addition to `import.meta.env.DEV`.
+ */
+export const DEMO_TOOLS_ENABLED: boolean =
+  import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_TOOLS === 'true';
+
+/** HI-1: key prefix for automatic pre-reset backups kept in localStorage. */
+const RESET_BACKUP_PREFIX = 'helli_institute_backup_before_reset_';
+
+/**
+ * HI-1: automatically export the full current dataset (including archives) as
+ * a JSON backup file before any reset happens, so the operation stays
+ * recoverable instead of permanently destroying records.
+ */
+export function downloadStateBackup(state: AppState): void {
+  try {
+    const payload = JSON.stringify({ exportedAt: new Date().toISOString(), version: 2, state });
+    // Keep one in-app snapshot too (best-effort; storage may be full).
+    try {
+      localStorage.setItem(`${RESET_BACKUP_PREFIX}${Date.now()}`, payload);
+    } catch {
+      /* non-fatal: the downloaded file is the primary safety net */
+    }
+    const blob = new Blob([payload], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `پشتیبان-پیش-از-بازنشانی-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  } catch (e) {
+    console.error('Error creating pre-reset backup', e);
+  }
+}
+
+/**
  * CR-1: Actions that mutate the currently displayed dataset (students /
  * classes / registrations). While an archived academic year is being viewed
  * (viewingYearId !== activeYearId) these actions are rejected at the dispatch
@@ -560,6 +600,16 @@ export const AppProvider: React.FC<{
     if (MUTATING_ACTION_TYPES.has(action.type) && cur.viewingYearId !== cur.activeYearId) {
       notify(ARCHIVED_READONLY_MESSAGE, 'error');
       return;
+    }
+    // HI-1: hard guard against destructive resets. The action is refused in
+    // production builds unless demo tools are explicitly enabled via env flag,
+    // and even then a full JSON backup is downloaded before the reset runs.
+    if (action.type === 'RESET_DATA') {
+      if (!DEMO_TOOLS_ENABLED) {
+        notify('بازنشانی داده‌ها در نسخه عملیاتی غیرفعال است.', 'error');
+        return;
+      }
+      downloadStateBackup(cur);
     }
     rawDispatch(action);
   };
