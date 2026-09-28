@@ -95,6 +95,30 @@ export const MUTATING_ACTION_TYPES: ReadonlySet<AppAction['type']> = new Set<App
 export const ARCHIVED_READONLY_MESSAGE =
   'سال تحصیلی در حال مشاهده بایگانی‌شده و فقط‌خواندنی است؛ برای افزودن، ویرایش یا حذف اطلاعات ابتدا به سال فعال بازگردید.';
 
+/**
+ * LO-5: clamp each bell's capacity to at least the number of active
+ * (non-cancelled) registrations for that bell, and stamp the derived
+ * `enrolledCount` on the session so every consumer (cards, pickers, forms)
+ * reads one consistent source of truth instead of recomputing it.
+ */
+function stampEnrolledCounts(cls: ClassRoom, state: AppState): ClassRoom {
+  const enrolledFor = (sessionId: string) =>
+    state.registrations.filter(
+      (r) => r.classId === cls.id && r.sessionId === sessionId && r.status !== 'cancelled'
+    ).length;
+  return {
+    ...cls,
+    sessions: cls.sessions.map((s) => {
+      const enrolled = enrolledFor(s.id);
+      return {
+        ...s,
+        enrolledCount: enrolled,
+        capacity: Math.max(Number(s.capacity) || 0, enrolled),
+      };
+    }),
+  };
+}
+
 export interface AppState {
   academicYears: AcademicYear[];
   activeYearId: string;
@@ -206,18 +230,24 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, students: [...action.payload, ...state.students] };
 
     case 'ADD_CLASS':
-      return { ...state, classes: [action.payload, ...state.classes] };
+      return { ...state, classes: [stampEnrolledCounts(action.payload, state), ...state.classes] };
 
-    case 'UPDATE_CLASS':
+    case 'UPDATE_CLASS': {
+      // LO-5 hard guard: a bell's capacity can never be persisted below the
+      // number of active (non-cancelled) registrations for that bell, even if
+      // some UI path forgets to validate. The value is clamped up to the
+      // enrolled count instead of rejecting the whole save.
+      const incoming = stampEnrolledCounts(action.payload, state);
       // ME-2: defensive normalization — never persist a session whose stored
       // start/end times contradict its display `time` string (e.g. an old
       // guessed 16:00–17:30 saved from a stale form state).
       return {
         ...state,
         classes: migrateSessionTimes(
-          state.classes.map((c) => (c.id === action.payload.id ? action.payload : c))
+          state.classes.map((c) => (c.id === incoming.id ? incoming : c))
         ),
       };
+    }
 
     case 'DELETE_CLASS':
       return {
