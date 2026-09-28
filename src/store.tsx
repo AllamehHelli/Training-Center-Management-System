@@ -41,6 +41,9 @@ export const MUTATING_ACTION_TYPES: ReadonlySet<AppAction['type']> = new Set<App
   'DELETE_REGISTRATION',
   'MARK_INSTALLMENT_PAID',
   'REFUND_INSTALLMENT',
+  // CR-3: WooCommerce order sync creates students/registrations too, so it
+  // must be blocked while an archived year is being viewed.
+  'SYNC_WOO_ORDERS',
 ]);
 
 export const ARCHIVED_READONLY_MESSAGE =
@@ -221,12 +224,109 @@ function appReducer(state: AppState, action: AppAction): AppState {
         classes: [...action.payload, ...state.classes],
       };
 
-    case 'SYNC_WOO_ORDERS':
+    case 'SYNC_WOO_ORDERS': {
+      // CR-3: The reducer is the last line of defense — even if a caller
+      // bypasses UI validation, we never import:
+      //  - an order whose wooOrderId was already synced (idempotency),
+      //  - a student with a duplicate national ID,
+      //  - a registration that exceeds the session capacity or duplicates an
+      //    existing active registration for the same session.
+      const seenOrderIds = new Set(
+        state.registrations.map((r) => String(r.wooOrderId)).filter((v) => v !== 'undefined')
+      );
+      const studentsById = new Map(state.students.map((s) => [s.id, s]));
+      const nationalIds = new Set(
+        state.students.map((s) => String(s.nationalId).trim()).filter(Boolean)
+      );
+      const classesById = new Map(state.classes.map((c) => [c.id, c]));
+
+      const newStudentsPayload = action.payload.newStudents || [];
+      const newRegistrations = action.payload.newRegistrations || [];
+      const rejectedReasons: string[] = [];
+      const acceptedRegIds = new Set<string>();
+      const acceptedStudentIds = new Set<string>();
+
+      for (const reg of newRegistrations) {
+        const orderKey = reg.wooOrderId !== undefined ? String(reg.wooOrderId) : undefined;
+
+        if (orderKey && seenOrderIds.has(orderKey)) {
+          rejectedReasons.push(`سفارش #${orderKey} قبلاً همگام شده است`);
+          continue;
+        }
+
+        const payloadStudent =
+          newStudentsPayload.find((s) => s.id === reg.studentId) ||
+          studentsById.get(reg.studentId);
+        if (!payloadStudent) {
+          rejectedReasons.push(`ثبت‌نام ${reg.code}: دانش‌آموز مرتبط یافت نشد`);
+          continue;
+        }
+
+        const nid = String(payloadStudent.nationalId || '').trim();
+        if (!nid || nationalIds.has(nid)) {
+          rejectedReasons.push(
+            `ثبت‌نام ${reg.code}: کد ملی تکراری یا نامعتبر (${payloadStudent.firstName} ${payloadStudent.lastName})`
+          );
+          continue;
+        }
+
+        const cls = classesById.get(reg.classId);
+        const ses = cls?.sessions.find((s) => s.id === reg.sessionId);
+        if (!cls || !ses) {
+          rejectedReasons.push(`ثبت‌نام ${reg.code}: کلاس یا زنگ برگزاری نامعتبر است`);
+          continue;
+        }
+
+        const enrolledInSession =
+          state.registrations.filter(
+            (r) => r.classId === reg.classId && r.sessionId === reg.sessionId && r.status !== 'cancelled'
+          ).length +
+          // registrations already accepted within this same batch
+          [...acceptedRegIds].reduce((acc, id) => {
+            const a = newRegistrations.find((r) => r.id === id);
+            return a && a.classId === reg.classId && a.sessionId === reg.sessionId ? acc + 1 : acc;
+          }, 0);
+        if (enrolledInSession >= ses.capacity) {
+          rejectedReasons.push(`ثبت‌نام ${reg.code}: ظرفیت زنگ «${ses.label}» تکمیل شده است`);
+          continue;
+        }
+
+        const duplicate = state.registrations.some(
+          (r) =>
+            r.studentId === reg.studentId &&
+            r.classId === reg.classId &&
+            r.sessionId === reg.sessionId &&
+            r.status !== 'cancelled'
+        );
+        if (duplicate) {
+          rejectedReasons.push(`ثبت‌نام ${reg.code}: این دانش‌آموز در این زنگ قبلاً ثبت‌نام کرده است`);
+          continue;
+        }
+
+        acceptedRegIds.add(reg.id);
+        acceptedStudentIds.add(payloadStudent.id);
+        nationalIds.add(nid);
+        if (orderKey) seenOrderIds.add(orderKey);
+      }
+
+      const acceptedStudents = newStudentsPayload.filter(
+        (s) => acceptedStudentIds.has(s.id) && !studentsById.has(s.id)
+      );
+      const acceptedRegistrations = newRegistrations.filter((r) => acceptedRegIds.has(r.id));
+
+      if (acceptedStudents.length === 0 && acceptedRegistrations.length === 0) {
+        if (rejectedReasons.length > 0) {
+          console.warn('SYNC_WOO_ORDERS rejected:', rejectedReasons.join(' | '));
+        }
+        return state;
+      }
+
       return {
         ...state,
-        students: [...action.payload.newStudents, ...state.students],
-        registrations: [...action.payload.newRegistrations, ...state.registrations],
+        students: [...acceptedStudents, ...state.students],
+        registrations: [...acceptedRegistrations, ...state.registrations],
       };
+    }
 
     case 'RESET_DATA':
       return buildSeedData();
