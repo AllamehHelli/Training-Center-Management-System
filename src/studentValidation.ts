@@ -8,12 +8,14 @@
  * phone validity, GPA range 0..20, required fields per Settings fieldSettings).
  */
 
+import Papa from 'papaparse';
 import { FieldSettings, PhoneNumber, Student } from './types';
 import {
   toPersianDigits,
   toEnglishDigits,
   validateIranianMobile,
   validateNationalId,
+  getTodayJalali,
 } from './utils';
 
 export interface StudentFormInput {
@@ -25,6 +27,30 @@ export interface StudentFormInput {
   gpa: string | number; // raw input value (string) or existing numeric value
   school: string;
   phones: PhoneNumber[];
+}
+
+/**
+ * HI-3 fix: grade list lives in localStorage (see Settings.tsx GRADES_STORAGE_KEY).
+ * This module must not import from Settings.tsx (circular-import risk with the
+ * component tree), so we read the same source of truth directly, falling back
+ * to DEFAULT_GRADES when nothing was stored yet.
+ */
+const GRADES_STORAGE_KEY = 'helli_grades_list_v1';
+const DEFAULT_GRADES_FALLBACK = ['ششم', 'هفتم', 'هشتم', 'نهم'];
+
+export function getAvailableGrades(): string[] {
+  try {
+    const stored = localStorage.getItem(GRADES_STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed) && parsed.length > 0 && parsed.every((g) => typeof g === 'string')) {
+        return parsed;
+      }
+    }
+  } catch {
+    /* fall through to defaults */
+  }
+  return DEFAULT_GRADES_FALLBACK;
 }
 
 /**
@@ -85,6 +111,15 @@ export function validateStudent(
     errors.school = 'نام مدرسه فعلی الزامی است';
   }
 
+  // HI-3 fix: grade must be one of the grades defined in Settings
+  // (previously the bulk CSV path accepted any arbitrary grade string).
+  const availableGrades = getAvailableGrades();
+  if (!input.grade || !input.grade.trim()) {
+    errors.grade = 'پایه تحصیلی الزامی است';
+  } else if (!availableGrades.includes(input.grade.trim())) {
+    errors.grade = `پایه تحصیلی «${input.grade.trim()}» در فهرست پایه‌های تعریف‌شده در تنظیمات وجود ندارد`;
+  }
+
   // Phones: at least one when enabled, and every provided number must be valid
   if (fieldSettings.phones) {
     if (!input.phones || input.phones.length === 0) {
@@ -129,4 +164,198 @@ export function buildStudentFromInput(
       .filter((p) => p.number.trim().length > 0)
       .map((p) => ({ ...p, number: toEnglishDigits(p.number).trim() })),
   };
+}
+
+// ---------------------------------------------------------------------------
+// HI-3 fix: bulk CSV import — proper RFC-4180 parsing (PapaParse) + the same
+// validation rules as the single-student form, plus duplicate detection both
+// against existing students and within the file itself. Rejected rows are
+// reported per-line before anything is committed to the store.
+// ---------------------------------------------------------------------------
+
+export const BULK_CSV_HEADERS = [
+  'نام',
+  'نام خانوادگی',
+  'نام پدر',
+  'کد ملی',
+  'پایه',
+  'معدل',
+  'مدرسه',
+  'شماره همراه',
+];
+
+export interface BulkRowResult {
+  /** 1-based line number shown to the user (header excluded from data lines). */
+  lineNo: number;
+  input: StudentFormInput;
+  errors: string[]; // empty => row is ready to import
+}
+
+export interface BulkCsvReport {
+  totalDataRows: number;
+  validCount: number;
+  invalidCount: number;
+  results: BulkRowResult[];
+  /** fatal, file-level problems (empty header, wrong columns, parse errors…) */
+  fileErrors: string[];
+}
+
+/** Normalize a Persian/Arabic-text header cell for tolerant matching. */
+function normalizeHeader(h: string): string {
+  return String(h || '')
+    .trim()
+    .replace(/^\uFEFF/, '')
+    .replace(/[\u200c]/g, ' ') // ZWNJ -> space
+    .replace(/\s+/g, ' ');
+}
+
+const HEADER_ALIASES: Record<string, keyof Omit<StudentFormInput, 'phones'> | 'phone'> = {
+  'نام': 'firstName',
+  'نام کوچک': 'firstName',
+  'نام خانوادگی': 'lastName',
+  'نام پدر': 'fatherName',
+  'کد ملی': 'nationalId',
+  'پایه': 'grade',
+  'پایه تحصیلی': 'grade',
+  'معدل': 'gpa',
+  'مدرسه': 'school',
+  'نام مدرسه': 'school',
+  'شماره همراه': 'phone',
+  'موبایل': 'phone',
+  'شماره موبایل': 'phone',
+  'تلفن همراه': 'phone',
+};
+
+/**
+ * Parse & validate a bulk CSV text WITHOUT committing anything.
+ * Uses PapaParse so quoted values containing commas/newlines survive intact.
+ */
+export function parseAndValidateBulkCSV(
+  text: string,
+  fieldSettings: FieldSettings,
+  existingStudents: Student[],
+  extraReservedNationalIds: string[] = []
+): BulkCsvReport {
+  const report: BulkCsvReport = {
+    totalDataRows: 0,
+    validCount: 0,
+    invalidCount: 0,
+    results: [],
+    fileErrors: [],
+  };
+
+  if (!text || !text.trim()) {
+    report.fileErrors.push('متن فایل خالی است.');
+    return report;
+  }
+
+  const parsed = Papa.parse<string[]>(text.trim(), {
+    skipEmptyLines: 'greedy',
+    delimiter: ',',
+  });
+
+  if (parsed.errors.length > 0) {
+    for (const err of parsed.errors.slice(0, 5)) {
+      report.fileErrors.push(`خطای تجزیه فایل در سطر ${toPersianDigits(String((err.row ?? 0) + 1))}: ${err.message}`);
+    }
+  }
+
+  const rows = (parsed.data as unknown as string[][]).filter(
+    (r) => Array.isArray(r) && r.some((c) => String(c ?? '').trim() !== '')
+  );
+
+  if (rows.length === 0) {
+    report.fileErrors.push('هیچ ردیف داده‌ای در فایل یافت نشد.');
+    return report;
+  }
+
+  // Map header names -> column indexes (tolerant to ordering & aliases)
+  const header = rows[0].map(normalizeHeader);
+  const colIndex: Partial<Record<keyof Omit<StudentFormInput, 'phones'> | 'phone', number>> = {};
+  header.forEach((h, idx) => {
+    const key = HEADER_ALIASES[h];
+    if (key && colIndex[key] === undefined) colIndex[key] = idx;
+  });
+
+  const requiredCols: Array<keyof Omit<StudentFormInput, 'phones'>> = [
+    'firstName',
+    'lastName',
+    'nationalId',
+    'grade',
+  ];
+  const missing = requiredCols.filter((c) => colIndex[c] === undefined);
+  if (missing.includes('firstName') || missing.includes('lastName')) {
+    report.fileErrors.push('سطر عنوان فایل باید حداقل ستون‌های «نام» و «نام خانوادگی» را داشته باشد.');
+    return report;
+  }
+  if (colIndex['phone'] === undefined) {
+    report.fileErrors.push('ستون «شماره همراه» در سطر عنوان فایل یافت نشد.');
+    return report;
+  }
+
+  const cell = (row: string[], key: keyof typeof colIndex): string => {
+    const i = colIndex[key];
+    return i === undefined ? '' : String(row[i] ?? '').trim();
+  };
+
+  // Uniqueness pool: existing DB students + reserved ids supplied by caller
+  const seenNids = new Set<string>(extraReservedNationalIds);
+
+  const dataRows = rows.slice(1);
+  dataRows.forEach((row, idx) => {
+    const lineNo = idx + 2; // +1 for 0-based, +1 because the header occupies line 1
+    report.totalDataRows += 1;
+
+    const input: StudentFormInput = {
+      firstName: cell(row, 'firstName'),
+      lastName: cell(row, 'lastName'),
+      fatherName: cell(row, 'fatherName'),
+      nationalId: cell(row, 'nationalId'),
+      grade: cell(row, 'grade'),
+      gpa: cell(row, 'gpa'),
+      school: cell(row, 'school'),
+      phones: [{ id: `p-bulk-${lineNo}`, label: 'همراه', number: cell(row, 'phone') }],
+    };
+
+    // Same shared rules as the single-student form (HI-2 module), checked
+    // against existing students…
+    const fieldErrors = validateStudent(input, fieldSettings, existingStudents);
+    const errors = Object.values(fieldErrors);
+
+    // …plus in-file duplicate detection on the national ID.
+    const cleanNid = toEnglishDigits(input.nationalId).trim();
+    if (cleanNid && !errors.some((e) => e.includes('کد ملی'))) {
+      if (seenNids.has(cleanNid)) {
+        errors.push('کد ملی این سطر با سطر تکراری دیگری در همان فایل است');
+      } else {
+        seenNids.add(cleanNid);
+      }
+    }
+
+    if (errors.length === 0) report.validCount += 1;
+    else report.invalidCount += 1;
+
+    report.results.push({ lineNo, input, errors });
+  });
+
+  if (report.totalDataRows === 0) {
+    report.fileErrors.push('لطفاً حداقل یک ردیف داده وارد نمایید.');
+  }
+
+  return report;
+}
+
+/** Convert validated bulk rows into Student objects ready for BULK_ADD_STUDENTS. */
+export function buildStudentsFromBulkResults(
+  results: BulkRowResult[],
+  batchId: string
+): Student[] {
+  return results
+    .filter((r) => r.errors.length === 0)
+    .map((r) =>
+      buildStudentFromInput(r.input, {
+        id: `std-${batchId}-${r.lineNo}`,
+        createdAt: getTodayJalali(),
+      })
+    );
 }

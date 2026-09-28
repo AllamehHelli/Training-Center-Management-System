@@ -10,13 +10,18 @@ import {
   toPersianDigits,
   toEnglishDigits,
   validateIranianMobile,
-  validateNationalId,
   downloadCSV,
   getTodayJalali,
   formatToman,
 } from './utils';
 import { Student, PhoneNumber, StudentGrade } from './types';
-import { validateStudent, buildStudentFromInput } from './studentValidation';
+import {
+  validateStudent,
+  buildStudentFromInput,
+  parseAndValidateBulkCSV,
+  buildStudentsFromBulkResults,
+  BulkCsvReport,
+} from './studentValidation';
 import { Modal, ConfirmModal, Avatar, useToast, Field, InfoTooltip } from './ui';
 import {
   IconPlus,
@@ -62,10 +67,9 @@ export const Students: React.FC = () => {
   ]);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-  // Bulk Import State
+  // Bulk Import State (HI-3: full per-row validation report instead of a flat error list)
   const [bulkText, setBulkText] = useState('');
-  const [bulkValidationErrors, setBulkValidationErrors] = useState<string[]>([]);
-  const [bulkValidCount, setBulkValidCount] = useState<number>(0);
+  const [bulkReport, setBulkReport] = useState<BulkCsvReport | null>(null);
 
   // Filter students
   const filteredStudents = state.students.filter((student) => {
@@ -199,67 +203,33 @@ export const Students: React.FC = () => {
   };
 
   // -------------------------------------------------------------
-  // Bulk CSV Import Logic
+  // -------------------------------------------------------------
+  // Bulk CSV Import Logic (HI-3 fix)
+  //   • RFC-4180 parsing via PapaParse (quoted commas are preserved)
+  //   • same shared validateStudent() rules as the single-student form
+  //     (national-ID format/checksum + uniqueness vs DB and within file,
+  //      grade membership in Settings list, GPA 0..20, required fields)
+  //   • per-row rejection report shown BEFORE anything is committed
   // -------------------------------------------------------------
   const sampleCSVText = `نام,نام خانوادگی,نام پدر,کد ملی,پایه,معدل,مدرسه,شماره همراه
-سامان,یوسفی,محسن,0041238910,هشتم,19.90,علامه حلی ۲,09121234567
-روژان,کریمیان,داریوش,0056781290,نهم,20.00,فرزانگان ۴,09129876543
-مهبد,انصاری,حسین,0067894512,ششم,19.85,دبستان اندیشه نو,09351112233`;
+سامان,یوسفی,محسن,0041238915,هشتم,19.90,"علامه حلی ۲",09121234567
+روژان,کریمیان,داریوش,0056781296,نهم,20.00,فرزانگان ۴,09129876543
+مهبد,انصاری,حسین,0067894518,ششم,19.85,دبستان اندیشه نو,09351112233`;
+
+  const runBulkValidation = (text: string): BulkCsvReport => {
+    const report = parseAndValidateBulkCSV(text, fieldSettings, state.students);
+    setBulkReport(report);
+    return report;
+  };
 
   const handleBulkTextChange = (text: string) => {
     setBulkText(text);
-    validateBulkCSV(text);
-  };
-
-  const validateBulkCSV = (text: string) => {
-    const lines = text.trim().split('\n').filter((l) => l.trim().length > 0);
-    if (lines.length <= 1) {
-      setBulkValidationErrors(['لطفاً حداقل یک ردیف داده وارد نمایید.']);
-      setBulkValidCount(0);
-      return;
-    }
-
-    const errors: string[] = [];
-    let validCount = 0;
-
-    // Skip header line
-    for (let i = 1; i < lines.length; i++) {
-      const lineNum = i + 1;
-      const parts = lines[i].split(',').map((p) => p.trim().replace(/^["']|["']$/g, ''));
-      if (parts.length < 8) {
-        errors.push(`سطر ${toPersianDigits(lineNum)}: تعداد ستون‌ها کمتر از ۸ ستون الزامی است.`);
-        continue;
-      }
-
-      const [fn, ln, fath, nid, gr, gpa, sch, phone] = parts;
-
-      if (!fn || !ln) {
-        errors.push(`سطر ${toPersianDigits(lineNum)}: نام یا نام خانوادگی خالی است.`);
-        continue;
-      }
-
-      const nidCheck = validateNationalId(nid);
-      if (!nidCheck.isValid) {
-        errors.push(`سطر ${toPersianDigits(lineNum)}: کد ملی نامعتبر است (${nidCheck.message})`);
-        continue;
-      }
-
-      const phoneCheck = validateIranianMobile(phone);
-      if (!phoneCheck.isValid) {
-        errors.push(`سطر ${toPersianDigits(lineNum)}: شماره موبایل نامعتبر است (${phoneCheck.message})`);
-        continue;
-      }
-
-      validCount++;
-    }
-
-    setBulkValidationErrors(errors);
-    setBulkValidCount(validCount);
+    runBulkValidation(text);
   };
 
   const handleBulkInsertSample = () => {
     setBulkText(sampleCSVText);
-    validateBulkCSV(sampleCSVText);
+    runBulkValidation(sampleCSVText);
   };
 
   const handleBulkCopySample = () => {
@@ -274,47 +244,62 @@ export const Students: React.FC = () => {
     reader.onload = (event) => {
       const content = event.target?.result as string;
       setBulkText(content);
-      validateBulkCSV(content);
+      runBulkValidation(content);
     };
     reader.readAsText(file);
   };
 
+  const bulkValidRows = bulkReport?.results.filter((r) => r.errors.length === 0) ?? [];
+  const bulkRejectedRows = bulkReport?.results.filter((r) => r.errors.length > 0) ?? [];
+  const bulkValidCount = bulkReport?.validCount ?? 0;
+
   const handleBulkSubmit = () => {
-    const lines = bulkText.trim().split('\n').filter((l) => l.trim().length > 0);
-    const parsedStudents: Student[] = [];
-
-    for (let i = 1; i < lines.length; i++) {
-      const parts = lines[i].split(',').map((p) => p.trim().replace(/^["']|["']$/g, ''));
-      if (parts.length < 8) continue;
-
-      const [fn, ln, fath, nid, gr, gpaStr, sch, phone] = parts;
-      const cleanNid = toEnglishDigits(nid);
-      const cleanPhone = toEnglishDigits(phone);
-
-      parsedStudents.push({
-        id: `std-bulk-${Date.now()}-${i}`,
-        firstName: fn,
-        lastName: ln,
-        fatherName: fath || '',
-        nationalId: cleanNid,
-        grade: gr || 'هفتم',
-        gpa: parseFloat(gpaStr) || 20.0,
-        school: sch || '',
-        phones: [{ id: `p-bulk-${Date.now()}-${i}`, label: 'همراه', number: cleanPhone }],
-        createdAt: getTodayJalali(),
-      });
+    // Re-validate at submit time against the CURRENT store so a row that was
+    // valid when typed cannot slip through if a duplicate appeared meanwhile.
+    const report = runBulkValidation(bulkText);
+    if (report.fileErrors.length > 0) {
+      showToast(report.fileErrors[0], 'error');
+      return;
     }
 
-    if (parsedStudents.length === 0) {
+    const validResults = report.results.filter((r) => r.errors.length === 0);
+    if (validResults.length === 0) {
       showToast('هیچ ردیف معتبری برای افزودن یافت نشد', 'error');
       return;
     }
 
-    dispatch({ type: 'BULK_ADD_STUDENTS', payload: parsedStudents });
-    showToast(`${toPersianDigits(parsedStudents.length)} دانش‌آموز با موفقیت وارد سامانه شدند`, 'success');
+    const batchId = `${Date.now()}`;
+    const parsedStudents = buildStudentsFromBulkResults(validResults, batchId);
+
+    // Final defensive guard: never import a national ID that already exists
+    // or repeats inside the batch itself.
+    const seen = new Set<string>(state.students.map((s) => toEnglishDigits(s.nationalId)));
+    const deduped = parsedStudents.filter((s) => {
+      const nid = toEnglishDigits(s.nationalId);
+      if (seen.has(nid)) return false;
+      seen.add(nid);
+      return true;
+    });
+    const skippedDupes = parsedStudents.length - deduped.length;
+
+    if (deduped.length === 0) {
+      showToast('تمام ردیف‌های معتبر به دلیل تکراری‌بودن کد ملی رد شدند', 'error');
+      return;
+    }
+
+    dispatch({ type: 'BULK_ADD_STUDENTS', payload: deduped });
+    const rejectedCount = report.invalidCount + skippedDupes;
+    showToast(
+      rejectedCount > 0
+        ? `${toPersianDigits(deduped.length)} دانش‌آموز وارد شد و ${toPersianDigits(rejectedCount)} ردیف نامعتبر رد گردید`
+        : `${toPersianDigits(deduped.length)} دانش‌آموز با موفقیت وارد سامانه شدند`,
+      rejectedCount > 0 ? 'info' : 'success'
+    );
     setIsBulkModalOpen(false);
     setBulkText('');
+    setBulkReport(null);
   };
+
 
   return (
     <div className="space-y-6">
@@ -805,24 +790,60 @@ export const Students: React.FC = () => {
             />
           </div>
 
-          {/* Live Validation Feedback */}
-          {bulkText && (
+          {/* Live Validation Feedback (HI-3: per-row report before commit) */}
+          {bulkText && bulkReport && (
             <div className="space-y-2 p-3 bg-slate-50 rounded-xl border border-slate-200/80">
               <div className="flex items-center justify-between font-semibold">
                 <span className="text-slate-700">نتیجه اعتبارسنجی زنده:</span>
-                <span className="text-[#0E7C5B] font-mono">
-                  {toPersianDigits(bulkValidCount)} ردیف آماده ثبت
+                <span className="flex items-center gap-3 font-mono text-[11px]">
+                  <span className="text-[#0E7C5B]">
+                    {toPersianDigits(bulkValidCount)} ردیف آماده ثبت
+                  </span>
+                  {(bulkRejectedRows.length > 0 || bulkReport.fileErrors.length > 0) && (
+                    <span className="text-[#D64545]">
+                      {toPersianDigits(bulkRejectedRows.length + bulkReport.fileErrors.length)} ردیف رد شده
+                    </span>
+                  )}
                 </span>
               </div>
 
-              {bulkValidationErrors.length > 0 && (
-                <div className="space-y-1 max-h-32 overflow-y-auto pt-2 border-t border-slate-200 text-[#D64545]">
-                  {bulkValidationErrors.map((err, i) => (
-                    <div key={i} className="flex items-center gap-1.5 text-[11px]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#D64545] shrink-0" />
+              {bulkReport.fileErrors.length > 0 && (
+                <div className="space-y-1 pt-2 border-t border-slate-200 text-[#D64545]">
+                  {bulkReport.fileErrors.map((err, i) => (
+                    <div key={`f-${i}`} className="flex items-center gap-1.5 text-[11px] font-bold">
+                      <IconAlert className="w-3.5 h-3.5 shrink-0" />
                       <span>{err}</span>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {bulkRejectedRows.length > 0 && (
+                <div className="space-y-1 max-h-40 overflow-y-auto pt-2 border-t border-slate-200 text-[#D64545]">
+                  {bulkRejectedRows.slice(0, 50).map((row) => (
+                    <div key={row.lineNo} className="text-[11px] leading-relaxed">
+                      <span className="font-mono font-bold">
+                        سطر {toPersianDigits(row.lineNo)}
+                      </span>
+                      {(row.input.firstName || row.input.lastName) && (
+                        <span className="text-slate-500"> ({row.input.firstName} {row.input.lastName})</span>
+                      )}
+                      {' — '}
+                      <span>{row.errors.join(' | ')}</span>
+                    </div>
+                  ))}
+                  {bulkRejectedRows.length > 50 && (
+                    <div className="text-[11px] text-slate-500">
+                      … و {toPersianDigits(bulkRejectedRows.length - 50)} ردیف ردشده دیگر
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {bulkReport.totalDataRows > 0 && bulkRejectedRows.length === 0 && bulkReport.fileErrors.length === 0 && (
+                <div className="flex items-center gap-1.5 text-[11px] text-[#0E7C5B] pt-1">
+                  <IconCheck className="w-3.5 h-3.5 shrink-0" />
+                  <span>همه ردیف‌ها معتبرند؛ قابل ثبت بدون هیچ ناسازگاری.</span>
                 </div>
               )}
             </div>

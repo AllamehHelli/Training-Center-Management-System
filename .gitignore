@@ -1,8 +1,2 @@
-# Build artifacts
-dist/
-
-# Environment files
-.env.local
-.env.*.local
-# Dependencies
-node_modules/
+# Temp files
+*.tmp
