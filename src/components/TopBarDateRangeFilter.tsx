@@ -4,7 +4,14 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { getTodayJalali, addMonthsJalali, addDaysJalali, toPersianDigits } from '../utils';
+import {
+  getTodayJalali,
+  addMonthsJalali,
+  addDaysJalali,
+  jalaliAcademicYearLabel,
+  toPersianDigits,
+} from '../utils';
+import { useAppStore } from '../store';
 import { IconCalendar } from '../icons';
 import { JalaliDatePicker } from '../JalaliDatePicker';
 import { ChevronDown, Check, Calendar as CalendarIcon, RotateCcw } from 'lucide-react';
@@ -30,6 +37,18 @@ export const TopBarDateRangeFilter: React.FC<TopBarDateRangeFilterProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const today = getTodayJalali();
 
+  // HI-6: previously this label was hardcoded to «کل سال تحصیلی ۱۴۰۳-۱۴۰۴».
+  // Derive it from the active academic year in the store (with a fallback
+  // computed from the real current date) so it never goes stale.
+  const { activeAcademicYear, viewingAcademicYear } = useAppStore();
+  // HI-6: never hardcode the year here. While an archived year is being
+  // viewed, show that year's title; otherwise the active year's title, with a
+  // fallback derived from the real current date.
+  const yearForLabel = viewingAcademicYear ?? activeAcademicYear;
+  const allRangeSub = yearForLabel
+    ? `کل ${yearForLabel.title}`
+    : `کل سال تحصیلی ${jalaliAcademicYearLabel(today) || '—'}`;
+
   const [customStart, setCustomStart] = useState(value.startDate || addMonthsJalali(today, -1));
   const [customEnd, setCustomEnd] = useState(value.endDate || today);
 
@@ -51,7 +70,7 @@ export const TopBarDateRangeFilter: React.FC<TopBarDateRangeFilterProps> = ({
   }, [isOpen]);
 
   const presets: { id: DateFilterPreset; label: string; sub?: string }[] = [
-    { id: 'all', label: 'همه تاریخ‌ها', sub: 'کل سال تحصیلی ۱۴۰۳-۱۴۰۴' },
+    { id: 'all', label: 'همه تاریخ‌ها', sub: allRangeSub },
     { id: 'today', label: 'امروز', sub: toPersianDigits(today) },
     { id: 'week', label: '۷ روز اخیر', sub: 'هفته گذشته تا امروز' },
     { id: '15days', label: '۱۵ روز اخیر', sub: 'دو هفته گذشته' },

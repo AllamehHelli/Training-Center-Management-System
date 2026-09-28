@@ -252,10 +252,44 @@ export function jalaliToGregorian(jy: number, jm: number, jd: number): [number, 
   return [gy, gm, gd];
 }
 
+// HI-6: "today" must be computed from the real system clock.
+// The previous implementation returned a hardcoded constant ('1403-07-06'), which made every
+// overdue calculation (isOverdue/daysOverdue), default dates, date-range presets and calendar
+// year options silently wrong in production.
+// For demos/tests you may pin the value via the VITE_DEMO_TODAY env variable (format YYYY/MM/DD);
+// it is validated with parseJalaliDate and ignored if malformed.
+let demoTodayWarned = false;
 export function getTodayJalali(): string {
-  // Current active academic year in the institute is 1403-1404 (early Mehr 1403).
-  // Anchoring to the active term date aligns with student records, payment schedules, and date filter ranges.
-  return '1403/07/06';
+  const demoToday = (import.meta as any)?.env?.VITE_DEMO_TODAY as string | undefined;
+  if (demoToday) {
+    const parsed = parseJalaliDate(demoToday);
+    if (parsed) {
+      return formatJalaliDate(parsed.year, parsed.month, parsed.day);
+    }
+    if (!demoTodayWarned && typeof console !== 'undefined') {
+      demoTodayWarned = true;
+      console.warn(
+        `VITE_DEMO_TODAY="${demoToday}" is not a valid Jalali date (expected YYYY/MM/DD). Falling back to the real system date.`
+      );
+    }
+  }
+  const d = new Date();
+  const [jy, jm, jd] = gregorianToJalali(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  return formatJalaliDate(jy, jm, jd);
+}
+
+// Academic year (Persian calendar) containing a Jalali date. The Iranian school
+// year starts in Mehr (month 7): 1404/05/20 -> «۱۴۰۳-۱۴۰۴», 1404/08/01 -> «۱۴۰۴-۱۴۰۵».
+export function jalaliAcademicYearParts(jy: number, jm: number): [number, number] {
+  const startYear = jm >= 7 ? jy : jy - 1;
+  return [startYear, startYear + 1];
+}
+
+export function jalaliAcademicYearLabel(dateStr?: string): string {
+  const parsed = parseJalaliDate(dateStr || getTodayJalali());
+  if (!parsed) return '';
+  const [s, e] = jalaliAcademicYearParts(parsed.year, parsed.month);
+  return `${toPersianDigits(s)}-${toPersianDigits(e)}`;
 }
 
 export const PERSIAN_MONTH_NAMES = [
