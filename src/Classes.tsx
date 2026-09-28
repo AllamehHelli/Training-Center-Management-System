@@ -35,31 +35,31 @@ export const Classes: React.FC = () => {
   const [formGrade, setFormGrade] = useState<StudentGrade>(grades[0] || 'هفتم');
   const [formTeacher, setFormTeacher] = useState('');
   const [formTuition, setFormTuition] = useState<number>(12000000);
-  const [formSessions, setFormSessions] = useState<ClassSession[]>([
-    {
-      id: 'ses-init-1',
-      kind: 'even',
-      label: 'زنگ روزهای زوج',
-      days: 'شنبه، دوشنبه، چهارشنبه',
-      time: '۱۶:۰۰ الی ۱۷:۳۰ (۱ ساعت و ۳۰ دقیقه)',
-      startTime: '16:00',
-      endTime: '17:30',
-      durationMinutes: 90,
-      capacity: 25,
-    },
-    {
-      id: 'ses-init-2',
-      kind: 'odd',
-      label: 'زنگ روزهای فرد',
-      days: 'یکشنبه، سه‌شنبه، پنجشنبه',
-      time: '۱۷:۴۵ الی ۱۹:۱۵ (۱ ساعت و ۳۰ دقیقه)',
-      startTime: '17:45',
-      endTime: '19:15',
-      durationMinutes: 90,
-      capacity: 25,
-    },
-  ]);
+  const [formSessions, setFormSessions] = useState<ClassSession[]>([]);
   const [formError, setFormError] = useState('');
+
+  // LO-5: active (non-cancelled) registrations per bell in the CURRENT store.
+  // Used as the minimum allowed capacity in the edit form so an admin can
+  // never shrink a bell below the number of students occupying it.
+  const liveEnrolledByBell = React.useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of state.registrations) {
+      if (r.status === 'cancelled') continue;
+      const key = `${r.classId}::${r.sessionId}`;
+      m.set(key, (m.get(key) || 0) + 1);
+    }
+    return m;
+  }, [state.registrations]);
+
+  const minCapacityFor = (ses: ClassSession): number => {
+    const classId = editingClass?.id;
+    if (!classId) return 1; // brand-new course — nobody is enrolled yet
+    // Prefer the live count; fall back to the stamped value for safety.
+    return Math.max(1, liveEnrolledByBell.get(`${classId}::${ses.id}`) ?? ses.enrolledCount ?? 0);
+  };
+
+  const sessionHasError = (ses: ClassSession): boolean =>
+    ses.capacity < minCapacityFor(ses);
 
   // Filter classes
   const filteredClasses = state.classes.filter((c) => {
@@ -227,6 +227,20 @@ export const Classes: React.FC = () => {
       const ses = formSessions[i];
       if (!ses.days.trim()) {
         setFormError(`لطفاً روزهای برگزاری زنگ ${toPersianDigits(i + 1)} را از طریق انتخابگر مشخص کنید`);
+        return;
+      }
+      // LO-5: capacity must never drop below the number of active students
+      // already enrolled in that bell.
+      const minCap = minCapacityFor(ses);
+      if (!(ses.capacity >= 1)) {
+        setFormError(`ظرفیت زنگ ${toPersianDigits(i + 1)} باید دست‌کم ۱ نفر باشد`);
+        return;
+      }
+      if (ses.capacity < minCap) {
+        setFormError(
+          `ظرفیت «${ses.label}» نمی‌تواند کمتر از ${toPersianDigits(minCap)} نفر باشد؛ ` +
+            `در حال حاضر ${toPersianDigits(minCap)} دانش‌آموز فعال در این زنگ ثبت‌نام دارد.`
+        );
         return;
       }
     }
@@ -621,16 +635,39 @@ export const Classes: React.FC = () => {
 
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-600 mb-1">ظرفیت پذیرش (نفر):</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="200"
-                        value={ses.capacity}
-                        onChange={(e) =>
-                          handleUpdateSession(ses.id, 'capacity', Number(e.target.value) || 20)
-                        }
-                        className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-hidden text-center"
-                      />
+                      {(() => {
+                        // LO-5: clamp the input to at least the active enrolled
+                        // count and surface inline feedback when the admin
+                        // types a lower value.
+                        const minCap = minCapacityFor(ses);
+                        const invalid = sessionHasError(ses);
+                        return (
+                          <>
+                            <input
+                              type="number"
+                              min={minCap}
+                              max="200"
+                              value={ses.capacity}
+                              onChange={(e) =>
+                                handleUpdateSession(ses.id, 'capacity', Number(e.target.value) || 20)
+                              }
+                              aria-invalid={invalid}
+                              className={`w-full px-2.5 py-1.5 bg-white border rounded-lg focus:outline-hidden text-center ${
+                                invalid ? 'border-[#D64545] ring-1 ring-[#D64545]/30' : 'border-slate-200'
+                              }`}
+                            />
+                            <div className="mt-1 text-[10px] leading-tight">
+                              {editingClass && minCap > 1 ? (
+                                <span className={invalid ? 'text-[#D64545] font-bold' : 'text-slate-400'}>
+                                  {invalid
+                                    ? `کمتر از تعداد ثبت‌نام‌شدگان (${toPersianDigits(minCap)}) مجاز نیست`
+                                    : `حداقل مجاز: ${toPersianDigits(minCap)} نفر (تعداد ثبت‌نام فعال)`}
+                                </span>
+                              ) : null}
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
 

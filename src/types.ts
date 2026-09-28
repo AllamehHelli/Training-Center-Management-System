@@ -36,6 +36,12 @@ export interface ClassSession {
   endTime?: string;   // e.g. 17:30
   durationMinutes?: number; // e.g. 90
   capacity: number;
+  /**
+   * LO-5: derived count of active (non-cancelled) registrations for this bell,
+   * stamped by the reducer on every class add/update. The UI uses it as the
+   * minimum allowed capacity and to keep remaining-seat displays consistent.
+   */
+  enrolledCount?: number;
 }
 
 export interface ClassRoom {

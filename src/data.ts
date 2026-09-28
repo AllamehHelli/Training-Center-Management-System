@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Student, ClassRoom, Registration, WooSettings, AcademicYear } from './types';
+import { Student, ClassRoom, Registration, WooSettings, AcademicYear, SyncLogItem } from './types';
 import { getTodayJalali, addMonthsJalali, migrateSessionTimes } from './utils';
 
 /**
@@ -791,6 +791,25 @@ export function buildSeedData(): {
   // are derived from the real time range (e.g. ۰۹:۰۰–۱۳:۰۰) instead of a
   // fixed guess.
   //
+  // LO-5 companion: sample capacities must never be below the number of active
+  // registrations for that bell, otherwise opening the edit form would show a
+  // capacity that the reducer has to clamp on first save. Raise any such
+  // capacity to the enrolled count (cancelled registrations don't occupy a
+  // seat).
+  const enrolledByBell = new Map<string, number>();
+  for (const r of registrations) {
+    if (r.status === 'cancelled') continue;
+    const key = `${r.classId}::${r.sessionId}`;
+    enrolledByBell.set(key, (enrolledByBell.get(key) || 0) + 1);
+  }
+  const seedClasses: ClassRoom[] = migrateSessionTimes(classes).map((c) => ({
+    ...c,
+    sessions: c.sessions.map((s) => {
+      const enrolled = enrolledByBell.get(`${c.id}::${s.id}`) || 0;
+      return { ...s, capacity: Math.max(s.capacity, enrolled), enrolledCount: enrolled };
+    }),
+  }));
+  //
   // nextRegSeq seeds at the highest sequence used by the sample data so the
   // first newly issued code can never collide with an existing one.
   const allSeedCodes = [
@@ -799,7 +818,7 @@ export function buildSeedData(): {
   ];
   return {
     students,
-    classes: migrateSessionTimes(classes),
+    classes: seedClasses,
     registrations,
     wooSettings,
     academicYears,
@@ -823,6 +842,24 @@ export function migrateLegacyData(parsed: any): {
   nextRegSeq: number;
 } {
   const seed = buildSeedData();
+
+  // LO-5 companion (archived snapshots): apply the same session-time backfill
+  // and capacity clamp to archived year data so historical records never show
+  // a bell whose capacity is below its enrolled count. The registrations used
+  // for the clamp are the snapshot's own ones (falling back to the live list
+  // when an archive predates per-year snapshots).
+  const clampArchivedClasses = (classes: ClassRoom[], regs?: Registration[]): ClassRoom[] => {
+    const sourceRegs = Array.isArray(regs) ? regs : migratedRegistrations;
+    return migrateSessionTimes(classes).map((c) => ({
+      ...c,
+      sessions: c.sessions.map((s) => {
+        const enrolled = sourceRegs.filter(
+          (r) => r.classId === c.id && r.sessionId === s.id && r.status !== 'cancelled'
+        ).length;
+        return { ...s, capacity: Math.max(s.capacity, enrolled), enrolledCount: enrolled };
+      }),
+    }));
+  };
 
 
   // 1. Students migration
@@ -890,11 +927,6 @@ export function migrateLegacyData(parsed: any): {
     migratedClasses = seed.classes;
   }
 
-  // ME-2: one-time migration — backfill startTime/endTime (and durationMinutes)
-  // for sessions that only carry the Persian display string, so edit forms and
-  // capacity/duration logic never fall back to a guessed 16:00–17:30.
-  migratedClasses = migrateSessionTimes(migratedClasses);
-
   // 3. Registrations migration
   let migratedRegistrations: Registration[] = [];
   if (Array.isArray(parsed?.registrations)) {
@@ -941,7 +973,40 @@ export function migrateLegacyData(parsed: any): {
     migratedRegistrations = seed.registrations;
   }
 
-  const wooSettings = parsed?.wooSettings || seed.wooSettings;
+  // ME-2: one-time migration — backfill startTime/endTime (and durationMinutes)
+  // for sessions that only carry the Persian display string, so edit forms and
+  // capacity/duration logic never fall back to a guessed 16:00–17:30.
+  // LO-5 companion: raise any sample/legacy capacity that is below the number
+  // of active registrations for that bell, so stored data can never show zero
+  // or negative remaining seats.
+  migratedClasses = migrateSessionTimes(migratedClasses).map((c) => ({
+    ...c,
+    sessions: c.sessions.map((s) => {
+      const enrolled = migratedRegistrations.filter(
+        (r) => r.classId === c.id && r.sessionId === s.id && r.status !== 'cancelled'
+      ).length;
+      return { ...s, capacity: Math.max(s.capacity, enrolled), enrolledCount: enrolled };
+    }),
+  }));
+
+  let wooSettings = parsed?.wooSettings || seed.wooSettings;
+
+  // HI-5 companion: mirror the last successful sync into the log once, so the
+  // "همگام‌سازی" section has an auditable history even when it was previously
+  // only reflected in wooSettings.lastSync. Idempotent via deterministic ids.
+  if (wooSettings?.lastSync) {
+    const syncLog: SyncLogItem[] = Array.isArray(wooSettings.syncLog) ? [...wooSettings.syncLog] : [];
+    const logId = `log-autosync-${wooSettings.lastSync}`;
+    if (!syncLog.some((l: SyncLogItem) => l && l.id === logId)) {
+      syncLog.unshift({
+        id: logId,
+        time: String(wooSettings.lastSync),
+        message: 'همگام‌سازی خودکار سفارش‌های ووکامرس با موفقیت انجام شد.',
+        type: 'success',
+      });
+      wooSettings = { ...wooSettings, syncLog };
+    }
+  }
 
   let academicYears: AcademicYear[] = [];
   if (Array.isArray(parsed?.academicYears) && parsed.academicYears.length > 0) {
@@ -950,12 +1015,15 @@ export function migrateLegacyData(parsed: any): {
     academicYears = seed.academicYears;
   }
 
-  // ME-2: apply the same session-time backfill to archived year snapshots so
-  // historical class records show/edit the correct bell times as well.
+  // ME-2 + LO-5: apply the session-time backfill AND the capacity clamp to
+  // archived year snapshots so historical class records show/edit the correct
+  // bell times and never a capacity below the snapshot's enrolled count.
   academicYears = academicYears.map((y: any) => {
     if (!y || !y.archivedData || !Array.isArray(y.archivedData.classes)) return y;
-    const migratedArchivedClasses = migrateSessionTimes(y.archivedData.classes);
-    if (migratedArchivedClasses === y.archivedData.classes) return y;
+    const migratedArchivedClasses = clampArchivedClasses(
+      y.archivedData.classes,
+      y.archivedData.registrations
+    );
     return { ...y, archivedData: { ...y.archivedData, classes: migratedArchivedClasses } };
   });
 
