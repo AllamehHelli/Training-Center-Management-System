@@ -15,7 +15,7 @@ import {
   AcademicYearDataSnapshot,
 } from './types';
 import { buildSeedData, migrateLegacyData } from './data';
-import { getTodayJalali } from './utils';
+import { getTodayJalali, migrateSessionTimes } from './utils';
 import { ToastType, ToastItem, getGlobalToast } from './ui';
 import { IconAlert, IconCheck, IconClose } from './icons';
 
@@ -165,9 +165,14 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, classes: [action.payload, ...state.classes] };
 
     case 'UPDATE_CLASS':
+      // ME-2: defensive normalization — never persist a session whose stored
+      // start/end times contradict its display `time` string (e.g. an old
+      // guessed 16:00–17:30 saved from a stale form state).
       return {
         ...state,
-        classes: state.classes.map((c) => (c.id === action.payload.id ? action.payload : c)),
+        classes: migrateSessionTimes(
+          state.classes.map((c) => (c.id === action.payload.id ? action.payload : c))
+        ),
       };
 
     case 'DELETE_CLASS':

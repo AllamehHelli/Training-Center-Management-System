@@ -37,6 +37,67 @@ export function formatToman(amount: number | string | undefined | null): string 
   return `${formatNumber(amount)} تومان`;
 }
 
+/**
+ * ME-2: Extract "HH:MM" start/end times from a Persian session time string.
+ * Handles formats like:
+ *   "۱۶:۰۰ الی ۱۷:۳۰ (۱ ساعت و ۳۰ دقیقه)"
+ *   "۰۹:۰۰ تا ۱۳:۰۰"
+ *   "16:00 - 17:30"
+ * Returns null when no valid pair of times is found.
+ */
+export function parseSessionTimeRange(
+  timeStr: string | undefined | null
+): { startTime: string; endTime: string } | null {
+  if (!timeStr) return null;
+  const eng = toEnglishDigits(String(timeStr));
+  const matches = eng.match(/\d{1,2}:\d{2}/g);
+  if (!matches || matches.length < 2) return null;
+  const pad = (s: string) => {
+    const [h, m] = s.split(':');
+    const hh = parseInt(h, 10);
+    const mm = parseInt(m, 10);
+    if (isNaN(hh) || isNaN(mm) || hh > 23 || mm > 59) return null;
+    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  };
+  const startTime = pad(matches[0]);
+  const endTime = pad(matches[1]);
+  if (!startTime || !endTime) return null;
+  return { startTime, endTime };
+}
+
+/**
+ * ME-2: Migration helper — fills missing startTime/endTime on class sessions
+ * by parsing the display `time` string, instead of guessing 16:00–17:30.
+ * Also recomputes durationMinutes from the resulting start/end pair so the
+ * stored values stay consistent with what is shown in the UI.
+ */
+export function migrateSessionTimes<T extends { sessions?: any[] }>(classes: T[]): T[] {
+  return classes.map((cls) => {
+    if (!Array.isArray(cls.sessions)) return cls;
+    let changed = false;
+    const sessions = cls.sessions.map((ses: any) => {
+      const hadTimes = Boolean(ses.startTime && ses.endTime);
+      const parsed = hadTimes ? null : parseSessionTimeRange(ses.time);
+      const startTime = ses.startTime || parsed?.startTime;
+      const endTime = ses.endTime || parsed?.endTime;
+      if (!startTime || !endTime) return ses;
+      let next: any = ses;
+      if (ses.startTime !== startTime || ses.endTime !== endTime) {
+        changed = true;
+        next = { ...ses, startTime, endTime };
+      }
+      // Keep durationMinutes in sync with the real start/end pair.
+      const dur = calculateClassDuration(startTime, endTime);
+      if (dur.isValid && dur.minutes > 0 && next.durationMinutes !== dur.minutes) {
+        changed = true;
+        next = { ...next, durationMinutes: dur.minutes };
+      }
+      return next;
+    });
+    return changed ? { ...cls, sessions } : cls;
+  });
+}
+
 // Calculate class duration from start and end time (e.g. 16:00 to 17:30)
 export function calculateClassDuration(startTime: string, endTime: string): {
   minutes: number;

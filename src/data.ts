@@ -4,7 +4,7 @@
  */
 
 import { Student, ClassRoom, Registration, WooSettings, AcademicYear } from './types';
-import { getTodayJalali, addMonthsJalali } from './utils';
+import { getTodayJalali, addMonthsJalali, migrateSessionTimes } from './utils';
 
 export function buildSeedData(): {
   students: Student[];
@@ -737,9 +737,12 @@ export function buildSeedData(): {
     },
   ];
 
+  // ME-2: seed sessions only carry the Persian display string (`time`); run
+  // the same migration here so startTime/endTime/durationMinutes are derived
+  // from the real time range (e.g. ۰۹:۰۰–۱۳:۰۰) instead of a fixed guess.
   return {
     students,
-    classes,
+    classes: migrateSessionTimes(classes),
     registrations,
     wooSettings,
     academicYears,
@@ -828,6 +831,11 @@ export function migrateLegacyData(parsed: any): {
     migratedClasses = seed.classes;
   }
 
+  // ME-2: one-time migration — backfill startTime/endTime (and durationMinutes)
+  // for sessions that only carry the Persian display string, so edit forms and
+  // capacity/duration logic never fall back to a guessed 16:00–17:30.
+  migratedClasses = migrateSessionTimes(migratedClasses);
+
   // 3. Registrations migration
   let migratedRegistrations: Registration[] = [];
   if (Array.isArray(parsed?.registrations)) {
@@ -880,6 +888,15 @@ export function migrateLegacyData(parsed: any): {
   } else {
     academicYears = seed.academicYears;
   }
+
+  // ME-2: apply the same session-time backfill to archived year snapshots so
+  // historical class records show/edit the correct bell times as well.
+  academicYears = academicYears.map((y: any) => {
+    if (!y || !y.archivedData || !Array.isArray(y.archivedData.classes)) return y;
+    const migratedArchivedClasses = migrateSessionTimes(y.archivedData.classes);
+    if (migratedArchivedClasses === y.archivedData.classes) return y;
+    return { ...y, archivedData: { ...y.archivedData, classes: migratedArchivedClasses } };
+  });
 
   const activeYearId = parsed?.activeYearId || 'ay-1403-1404';
   const viewingYearId = parsed?.viewingYearId || activeYearId;

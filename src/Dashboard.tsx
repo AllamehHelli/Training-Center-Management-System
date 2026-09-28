@@ -70,6 +70,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [statusFilter, setStatusFilter] = useState('all');
   const [paymentFilter, setPaymentFilter] = useState('all');
   const [openRowActionId, setOpenRowActionId] = useState<string | null>(null);
+  // ME-3: pagination state for the registrations table (was hard-capped at 8 rows)
+  const [tablePage, setTablePage] = useState(0);
+  const TABLE_PAGE_SIZE = 8;
 
   // Active Jalali date filter evaluation
   const isDateFilterActive =
@@ -249,6 +252,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     return true;
   });
+
+  // ME-3: paginated view of the table instead of a silent hard cap of 8 rows.
+  const totalPages = Math.max(1, Math.ceil(filteredRegistrations.length / TABLE_PAGE_SIZE));
+  const safePage = Math.min(tablePage, totalPages - 1);
+  const pagedRegistrations = filteredRegistrations.slice(
+    safePage * TABLE_PAGE_SIZE,
+    (safePage + 1) * TABLE_PAGE_SIZE
+  );
 
   return (
     <div className="space-y-6">
@@ -610,7 +621,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </td>
                 </tr>
               ) : (
-                filteredRegistrations.slice(0, 8).map((reg) => {
+                pagedRegistrations.map((reg) => {
                   const student = getStudentById(reg.studentId);
                   const classRoom = getClassById(reg.classId);
                   const session = classRoom?.sessions.find((s) => s.id === reg.sessionId);
