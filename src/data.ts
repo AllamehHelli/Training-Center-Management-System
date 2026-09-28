@@ -991,6 +991,14 @@ export function migrateLegacyData(parsed: any): {
 
   let wooSettings = parsed?.wooSettings || seed.wooSettings;
 
+  // CR-4 (security): older builds persisted the WooCommerce consumer key and
+  // secret in plain text inside localStorage. Wipe them on load — credentials
+  // are session-only now and must be re-entered by the admin (or, better,
+  // moved to the server-side proxy). Idempotent: runs only when present.
+  if (wooSettings && (wooSettings.consumerKey || wooSettings.consumerSecret)) {
+    wooSettings = { ...wooSettings, consumerKey: '', consumerSecret: '' };
+  }
+
   // HI-5 companion: mirror the last successful sync into the log once, so the
   // "همگام‌سازی" section has an auditable history even when it was previously
   // only reflected in wooSettings.lastSync. Idempotent via deterministic ids.

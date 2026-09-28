@@ -136,8 +136,16 @@ export interface SyncLogItem {
 
 export interface WooSettings {
   url: string;
-  consumerKey: string;
-  consumerSecret: string;
+  /**
+   * CR-4 (security): these two fields are NEVER persisted to localStorage and
+   * never leave the browser session. They live only in in-memory React state
+   * while the admin configures the integration on the Woo page. For an
+   * operational deployment the keys must be held server-side (env/secret
+   * manager) and every WooCommerce call must go through the backend proxy
+   * (`proxyBaseUrl` / `VITE_WOO_PROXY_BASE`) — see docs/SECURITY.md.
+   */
+  consumerKey?: string;
+  consumerSecret?: string;
   isConnected: boolean;
   lastSync?: string;
   syncLog: SyncLogItem[];

@@ -29,6 +29,7 @@ import {
   AlertTriangle,
   Menu,
   X,
+  UserRound,
 } from 'lucide-react';
 import { LogoHelli } from './Logo';
 import { CommandPalette } from './components/CommandPalette';
@@ -313,16 +314,19 @@ const AppContent: React.FC = () => {
             </button>
 
             {/* User Profile Avatar Capsule (Sarah Mitchell / Super admin) */}
-            <div className="flex items-center gap-2 pr-1 sm:pr-2 border-r border-neutral-200/70">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-neutral-800 to-neutral-700 text-white flex items-center justify-center text-xs font-bold font-mono shadow-2xs">
-                سم
+            {/* CR-4: the sidebar avatar is a decorative placeholder — there is no
+                authentication in this client-only build. Never present it as a
+                real, named logged-in user (PII + false sense of security). */}
+            <div className="flex items-center gap-2 pr-1 sm:pr-2 border-r border-neutral-200/70" title="این نسخه احراز هویت ندارد؛ برای محیط عملیاتی به بک‌اند + لاگین نیاز است (docs/SECURITY.md)">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-neutral-800 to-neutral-700 text-white flex items-center justify-center text-xs font-bold shadow-2xs">
+                <UserRound size={14} />
               </div>
               <div className="hidden xl:block text-right leading-tight">
                 <span className="block text-xs font-bold text-neutral-900">
-                  سارا محمدی
+                  کاربر محلی
                 </span>
                 <span className="block text-[10px] text-neutral-400 font-medium">
-                  مدیر ارشد سامانه
+                  بدون احراز هویت
                 </span>
               </div>
             </div>

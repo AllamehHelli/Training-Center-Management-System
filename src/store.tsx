@@ -22,6 +22,28 @@ import { IconAlert, IconCheck, IconClose } from './icons';
 const STORAGE_KEY = 'helli_institute_data_v2';
 
 /**
+ * CR-4 (security): session-only WooCommerce consumer credentials.
+ *
+ * The reducer keeps consumerKey/consumerSecret in memory (so the current
+ * render can use them), but they are stripped from every copy written to
+ * localStorage and wiped on reload. In an operational deployment the keys
+ * should never touch the browser at all — attach them server-side in the
+ * proxy configured via `proxyBaseUrl` / VITE_WOO_PROXY_BASE (see HI-5 and
+ * docs/SECURITY.md).
+ */
+export function stripWooCredentials(state: AppState): AppState {
+  if (!state.wooSettings) return state;
+  if (!state.wooSettings.consumerKey && !state.wooSettings.consumerSecret) return state;
+  const { consumerKey: _k, consumerSecret: _s, ...safe } = state.wooSettings;
+  return { ...state, wooSettings: safe as WooSettings };
+}
+
+/** Whether WooCommerce credentials are currently held in this browser session. */
+export function hasWooCredentials(w: WooSettings | undefined): boolean {
+  return Boolean(w && (w.consumerKey || w.consumerSecret));
+}
+
+/**
  * HI-1: RESET_DATA is a destructive demo-only action that replaces the entire
  * state (including archived academic years) with seed data. It must never be
  * reachable in an operational build, so it is gated behind an explicit env
@@ -46,7 +68,9 @@ function currentJalaliYearForCodes(): number {
  */
 export function downloadStateBackup(state: AppState): void {
   try {
-    const payload = JSON.stringify({ exportedAt: new Date().toISOString(), version: 2, state });
+    // CR-4: backups are plain files that may leave the machine — never embed
+    // WooCommerce credentials in them.
+    const payload = JSON.stringify({ exportedAt: new Date().toISOString(), version: 2, state: stripWooCredentials(state) });
     // Keep one in-app snapshot too (best-effort; storage may be full).
     try {
       localStorage.setItem(`${RESET_BACKUP_PREFIX}${Date.now()}`, payload);
@@ -746,7 +770,10 @@ export const AppProvider: React.FC<{
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      // CR-4: WooCommerce consumer keys are session-only — strip them from
+      // everything written to localStorage so a shared/locked machine never
+      // retains the store credentials after the tab is closed.
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stripWooCredentials(state)));
     } catch (e) {
       console.error('Error saving institute data to localStorage', e);
     }
