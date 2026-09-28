@@ -6,6 +6,50 @@
 import { Student, ClassRoom, Registration, WooSettings, AcademicYear } from './types';
 import { getTodayJalali, addMonthsJalali, migrateSessionTimes } from './utils';
 
+/**
+ * ME/CR fix — tracking-code sequence helpers.
+ *
+ * A registration tracking code has the shape T-<jalali-year>-<4-digit seq>.
+ * The sequence is GLOBAL and monotonic: it never rewinds when a year is
+ * archived or a registration is deleted, so codes stay unique forever.
+ */
+const REG_CODE_RE = /^T-(\d{4})-(\d+)$/;
+
+/** Largest sequence number found in a list of codes (0 when none match). */
+export function maxRegistrationSeq(codes: Array<string | undefined>): number {
+  let max = 0;
+  for (const code of codes) {
+    const m = REG_CODE_RE.exec(String(code || ''));
+    if (m) max = Math.max(max, parseInt(m[2], 10) || 0);
+  }
+  return max;
+}
+
+/** Build the canonical code for a given jalali year + global sequence. */
+export function makeRegistrationCode(jalaliYear: number, seq: number): string {
+  return `T-${jalaliYear}-${String(seq).padStart(4, '0')}`;
+}
+
+/**
+ * One-time re-keying of legacy short codes (`T-101`, `T-102`, …) to the new
+ * global format. Codes that already match the new pattern are left untouched.
+ * `jalaliYear` is the year stamped onto migrated legacy codes.
+ */
+export function normalizeRegistrationCodes<T extends { code?: string; wooOrderId?: number | string }>(
+  regs: T[],
+  jalaliYear: number
+): T[] {
+  return regs.map((r, idx) => {
+    const code = String(r.code || '');
+    if (REG_CODE_RE.test(code)) return r;
+    // WooCommerce imports used `T-WC<orderId>` — keep them stable & unique.
+    if (code.startsWith('T-WC')) return r;
+    const num = /^T-(\d+)$/.exec(code);
+    const seq = num ? 100 + parseInt(num[1], 10) : 100 + idx;
+    return { ...r, code: makeRegistrationCode(jalaliYear, seq) };
+  });
+}
+
 export function buildSeedData(): {
   students: Student[];
   classes: ClassRoom[];
@@ -14,6 +58,8 @@ export function buildSeedData(): {
   academicYears: AcademicYear[];
   activeYearId: string;
   viewingYearId: string;
+  /** ME fix: global tracking-code counter (see AppState.nextRegSeq). */
+  nextRegSeq: number;
 } {
   const today = getTodayJalali();
 
@@ -344,7 +390,7 @@ export function buildSeedData(): {
   const registrations: Registration[] = [
     {
       id: 'reg-1',
-      code: 'T-101',
+      code: 'T-1403-0201',
       studentId: 'std-1',
       classId: 'cls-1',
       sessionId: 'ses-1-even',
@@ -366,7 +412,7 @@ export function buildSeedData(): {
     },
     {
       id: 'reg-2',
-      code: 'T-102',
+      code: 'T-1403-0202',
       studentId: 'std-2',
       classId: 'cls-1',
       sessionId: 'ses-1-even',
@@ -385,7 +431,7 @@ export function buildSeedData(): {
     },
     {
       id: 'reg-3',
-      code: 'T-103',
+      code: 'T-1403-0203',
       studentId: 'std-3',
       classId: 'cls-2',
       sessionId: 'ses-2-even',
@@ -409,7 +455,7 @@ export function buildSeedData(): {
     },
     {
       id: 'reg-4',
-      code: 'T-104',
+      code: 'T-1403-0204',
       studentId: 'std-4',
       classId: 'cls-2',
       sessionId: 'ses-2-odd',
@@ -432,7 +478,7 @@ export function buildSeedData(): {
     },
     {
       id: 'reg-5',
-      code: 'T-105',
+      code: 'T-1403-0205',
       studentId: 'std-5',
       classId: 'cls-3',
       sessionId: 'ses-3-even',
@@ -453,7 +499,7 @@ export function buildSeedData(): {
     },
     {
       id: 'reg-6',
-      code: 'T-106',
+      code: 'T-1403-0206',
       studentId: 'std-6',
       classId: 'cls-3',
       sessionId: 'ses-3-odd',
@@ -471,7 +517,7 @@ export function buildSeedData(): {
     },
     {
       id: 'reg-7',
-      code: 'T-107',
+      code: 'T-1403-0207',
       studentId: 'std-7',
       classId: 'cls-4',
       sessionId: 'ses-4-even',
@@ -496,7 +542,7 @@ export function buildSeedData(): {
     },
     {
       id: 'reg-8',
-      code: 'T-108',
+      code: 'T-1403-0208',
       studentId: 'std-8',
       classId: 'cls-4',
       sessionId: 'ses-4-odd',
@@ -517,7 +563,7 @@ export function buildSeedData(): {
     },
     {
       id: 'reg-9',
-      code: 'T-109',
+      code: 'T-1403-0209',
       studentId: 'std-9',
       classId: 'cls-5',
       sessionId: 'ses-5-even',
@@ -539,7 +585,7 @@ export function buildSeedData(): {
     },
     {
       id: 'reg-10',
-      code: 'T-110',
+      code: 'T-1403-0210',
       studentId: 'std-10',
       classId: 'cls-6',
       sessionId: 'ses-6-custom',
@@ -558,7 +604,7 @@ export function buildSeedData(): {
     },
     {
       id: 'reg-11',
-      code: 'T-111',
+      code: 'T-1403-0211',
       studentId: 'std-11',
       classId: 'cls-3',
       sessionId: 'ses-3-even',
@@ -579,7 +625,7 @@ export function buildSeedData(): {
     },
     {
       id: 'reg-12',
-      code: 'T-112',
+      code: 'T-1403-0212',
       studentId: 'std-12',
       classId: 'cls-4',
       sessionId: 'ses-4-even',
@@ -604,7 +650,7 @@ export function buildSeedData(): {
     },
     {
       id: 'reg-13',
-      code: 'T-113',
+      code: 'T-1403-0213',
       studentId: 'std-1',
       classId: 'cls-5',
       sessionId: 'ses-5-even',
@@ -623,7 +669,7 @@ export function buildSeedData(): {
     },
     {
       id: 'reg-14',
-      code: 'T-114',
+      code: 'T-1403-0214',
       studentId: 'std-3',
       classId: 'cls-6',
       sessionId: 'ses-6-custom',
@@ -644,7 +690,7 @@ export function buildSeedData(): {
     },
     {
       id: 'reg-15',
-      code: 'T-115',
+      code: 'T-1403-0215',
       studentId: 'std-5',
       classId: 'cls-2',
       sessionId: 'ses-2-custom',
@@ -663,7 +709,7 @@ export function buildSeedData(): {
     },
     {
       id: 'reg-16',
-      code: 'T-116',
+      code: 'T-1403-0216',
       studentId: 'std-2',
       classId: 'cls-5',
       sessionId: 'ses-5-even',
@@ -740,9 +786,17 @@ export function buildSeedData(): {
     },
   ];
 
-  // ME-2: seed sessions only carry the Persian display string (`time`); run
-  // the same migration here so startTime/endTime/durationMinutes are derived
-  // from the real time range (e.g. ۰۹:۰۰–۱۳:۰۰) instead of a fixed guess.
+  // ME-2 fix companion: seed sessions only carry the Persian display string
+  // (`time`); run the same migration here so startTime/endTime/durationMinutes
+  // are derived from the real time range (e.g. ۰۹:۰۰–۱۳:۰۰) instead of a
+  // fixed guess.
+  //
+  // nextRegSeq seeds at the highest sequence used by the sample data so the
+  // first newly issued code can never collide with an existing one.
+  const allSeedCodes = [
+    ...registrations.map((r) => r.code),
+    ...academicYears.flatMap((y) => y.archivedData?.registrations?.map((r) => r.code) || []),
+  ];
   return {
     students,
     classes: migrateSessionTimes(classes),
@@ -751,6 +805,7 @@ export function buildSeedData(): {
     academicYears,
     activeYearId: 'ay-1403-1404',
     viewingYearId: 'ay-1403-1404',
+    nextRegSeq: maxRegistrationSeq(allSeedCodes),
   };
 }
 
@@ -765,6 +820,7 @@ export function migrateLegacyData(parsed: any): {
   academicYears: AcademicYear[];
   activeYearId: string;
   viewingYearId: string;
+  nextRegSeq: number;
 } {
   const seed = buildSeedData();
 
@@ -867,7 +923,9 @@ export function migrateLegacyData(parsed: any): {
 
       return {
         id: r.id || `reg-${idx + 1}`,
-        code: r.code || `T-${100 + idx}`,
+        // Legacy short codes (`T-101`) are re-keyed to the global format in a
+        // later pass (see normalizeRegistrationCodes below).
+        code: r.code || '',
         studentId: r.studentId || migratedStudents[0]?.id || 'std-1',
         classId: r.classId || targetClass?.id || 'cls-1',
         sessionId,
@@ -901,6 +959,38 @@ export function migrateLegacyData(parsed: any): {
     return { ...y, archivedData: { ...y.archivedData, classes: migratedArchivedClasses } };
   });
 
+  // ---------------------------------------------------------------------
+  // Tracking-code migration (global uniqueness fix):
+  //   * re-key legacy `T-1xx` codes (live list AND every archived snapshot)
+  //     to the canonical `T-<jalali-year>-<seq>` format,
+  //   * then derive nextRegSeq from EVERY code that has ever existed —
+  //     including deleted ones via the persisted high-water mark — so new
+  //     codes can never collide with history or rewind after archiving.
+  // ---------------------------------------------------------------------
+  const todayParts = getTodayJalali().split('/');
+  const currentJalaliYear = parseInt(todayParts[0], 10) || 1403;
+
+  academicYears = academicYears.map((y: any) => {
+    if (!y || !y.archivedData || !Array.isArray(y.archivedData.registrations)) return y;
+    const fixed = normalizeRegistrationCodes(y.archivedData.registrations, currentJalaliYear);
+    if (fixed.every((r, i) => r.code === y.archivedData.registrations[i].code)) return y;
+    return { ...y, archivedData: { ...y.archivedData, registrations: fixed } };
+  });
+  migratedRegistrations = normalizeRegistrationCodes(migratedRegistrations, currentJalaliYear);
+
+  const persistedSeq = Number(parsed?.nextRegSeq);
+  const observedMaxSeq = maxRegistrationSeq([
+    ...migratedRegistrations.map((r) => r.code),
+    ...academicYears.flatMap(
+      (y) => y.archivedData?.registrations?.map((r) => r.code) || []
+    ),
+  ]);
+  const nextRegSeq = Math.max(
+    Number.isFinite(persistedSeq) ? persistedSeq : 0,
+    observedMaxSeq,
+    seed.nextRegSeq
+  );
+
   const activeYearId = parsed?.activeYearId || 'ay-1403-1404';
   const viewingYearId = parsed?.viewingYearId || activeYearId;
 
@@ -912,6 +1002,7 @@ export function migrateLegacyData(parsed: any): {
     academicYears,
     activeYearId,
     viewingYearId,
+    nextRegSeq,
   };
 }
 

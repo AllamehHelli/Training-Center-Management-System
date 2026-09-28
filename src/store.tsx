@@ -14,7 +14,7 @@ import {
   AcademicYear,
   AcademicYearDataSnapshot,
 } from './types';
-import { buildSeedData, migrateLegacyData } from './data';
+import { buildSeedData, migrateLegacyData, maxRegistrationSeq, makeRegistrationCode } from './data';
 import { getTodayJalali, migrateSessionTimes } from './utils';
 import { ToastType, ToastItem, getGlobalToast } from './ui';
 import { IconAlert, IconCheck, IconClose } from './icons';
@@ -32,6 +32,12 @@ export const DEMO_TOOLS_ENABLED: boolean =
 
 /** HI-1: key prefix for automatic pre-reset backups kept in localStorage. */
 const RESET_BACKUP_PREFIX = 'helli_institute_backup_before_reset_';
+
+/** Current Jalali year used as the prefix of newly issued tracking codes. */
+function currentJalaliYearForCodes(): number {
+  const jy = parseInt(getTodayJalali().split('/')[0], 10);
+  return Number.isFinite(jy) ? jy : 1403;
+}
 
 /**
  * HI-1: automatically export the full current dataset (including archives) as
@@ -97,6 +103,13 @@ export interface AppState {
   classes: ClassRoom[];
   registrations: Registration[];
   wooSettings: WooSettings;
+  /**
+   * Global high-water mark for registration tracking codes. It only ever
+   * increases — independent of the academic year and of deletions — so a code
+   * like T-1405-0007 can never be issued twice, even after starting a new
+   * year or deleting the registration that owned it.
+   */
+  nextRegSeq: number;
 }
 
 export type AppAction =
@@ -141,6 +154,37 @@ export type AppAction =
 
 
 function appReducer(state: AppState, action: AppAction): AppState {
+  // ------------------------------------------------------------------
+  // Tracking-code issuance (global uniqueness fix).
+  //
+  // Codes are ALWAYS issued here — never by callers — from a persisted
+  // monotonic high-water mark (`nextRegSeq`) combined with the current
+  // Jalali year. The counter survives year archiving and deletions, so:
+  //   * starting a new academic year can no longer restart numbering at
+  //     T-101 and collide with last year's archived receipts;
+  //   * deleting a registration can no longer cause its code to be reused.
+  // A final collision check against every live + archived code is kept as a
+  // defensive belt-and-braces guard.
+  // ------------------------------------------------------------------
+  const allKnownCodes = (): Set<string> => {
+    const set = new Set<string>();
+    state.registrations.forEach((r) => r.code && set.add(r.code));
+    state.academicYears.forEach((y) =>
+      (y.archivedData?.registrations || []).forEach((r) => r.code && set.add(r.code))
+    );
+    return set;
+  };
+
+  const issueRegistrationCode = (taken: Set<string>): string => {
+    let seq = state.nextRegSeq;
+    let code = '';
+    do {
+      seq += 1;
+      code = makeRegistrationCode(currentJalaliYearForCodes(), seq);
+    } while (taken.has(code));
+    return code;
+  };
+
   switch (action.type) {
     case 'ADD_STUDENT':
       return { ...state, students: [action.payload, ...state.students] };
@@ -182,8 +226,19 @@ function appReducer(state: AppState, action: AppAction): AppState {
         registrations: state.registrations.filter((r) => r.classId !== action.payload),
       };
 
-    case 'ADD_REGISTRATION':
-      return { ...state, registrations: [action.payload, ...state.registrations] };
+    case 'ADD_REGISTRATION': {
+      // Tracking codes are issued centrally here (never by the caller) so the
+      // sequence is global, monotonic and collision-free across years/deletes.
+      const taken = allKnownCodes();
+      const code = issueRegistrationCode(taken);
+      const registration: Registration = { ...action.payload, code };
+      const seq = parseInt(code.split('-')[2], 10) || state.nextRegSeq;
+      return {
+        ...state,
+        nextRegSeq: Math.max(state.nextRegSeq, seq),
+        registrations: [registration, ...state.registrations],
+      };
+    }
 
     case 'UPDATE_REGISTRATION_STATUS':
       return {
@@ -357,7 +412,22 @@ function appReducer(state: AppState, action: AppAction): AppState {
       const acceptedStudents = newStudentsPayload.filter(
         (s) => acceptedStudentIds.has(s.id) && !studentsById.has(s.id)
       );
-      const acceptedRegistrations = newRegistrations.filter((r) => acceptedRegIds.has(r.id));
+      // Tracking codes for imported orders are issued by the same central
+      // allocator as manual registrations (global, monotonic, collision-free).
+      const wooTaken = allKnownCodes();
+      let wooSeq = state.nextRegSeq;
+      const acceptedRegistrations = newRegistrations
+        .filter((r) => acceptedRegIds.has(r.id))
+        .map((r) => {
+          wooSeq += 1;
+          let code = makeRegistrationCode(currentJalaliYearForCodes(), wooSeq);
+          while (wooTaken.has(code)) {
+            wooSeq += 1;
+            code = makeRegistrationCode(currentJalaliYearForCodes(), wooSeq);
+          }
+          wooTaken.add(code);
+          return { ...r, code };
+        });
 
       if (acceptedStudents.length === 0 && acceptedRegistrations.length === 0) {
         if (rejectedReasons.length > 0) {
@@ -366,8 +436,14 @@ function appReducer(state: AppState, action: AppAction): AppState {
         return state;
       }
 
+      const maxAcceptedSeq = acceptedRegistrations.reduce(
+        (acc, r) => Math.max(acc, parseInt(String(r.code).split('-')[2], 10) || 0),
+        state.nextRegSeq
+      );
+
       return {
         ...state,
+        nextRegSeq: maxAcceptedSeq,
         students: [...acceptedStudents, ...state.students],
         registrations: [...acceptedRegistrations, ...state.registrations],
       };
@@ -542,6 +618,13 @@ export interface AppContextValue {
   getClassRegistrations: (classId: string) => Registration[];
   getSessionEnrolledCount: (classId: string, sessionId: string) => number;
   getSessionRemainingCapacity: (classId: string, sessionId: string) => number;
+  /**
+   * Global uniqueness fix: preview of the tracking code that WILL be issued by
+   * the next ADD_REGISTRATION / accepted Woo order. Display-only — actual
+   * issuance happens atomically inside the reducer so two concurrent forms can
+   * never claim the same number.
+   */
+  peekNextRegistrationCode: () => string;
 }
 
 
@@ -552,16 +635,28 @@ export const AppProvider: React.FC<{
   showToast?: (message: string, type?: ToastType, title?: string) => void;
 }> = ({ children, showToast: showToastProp }) => {
   const [state, rawDispatch] = useReducer(appReducer, undefined, () => {
+    let loaded: AppState | null = null;
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        return migrateLegacyData(parsed);
+        loaded = migrateLegacyData(parsed);
       }
     } catch (e) {
       console.error('Error loading institute data from localStorage', e);
     }
-    return buildSeedData();
+    if (!loaded) loaded = buildSeedData();
+
+    // Defensive high-water-mark sync: even a state that never went through
+    // migrateLegacyData (e.g. corrupted payload) must have nextRegSeq >= every
+    // code that currently exists live or in any archived snapshot.
+    const observedMax = maxRegistrationSeq([
+      ...loaded.registrations.map((r) => r.code),
+      ...loaded.academicYears.flatMap(
+        (y) => y.archivedData?.registrations?.map((r) => r.code) || []
+      ),
+    ]);
+    return { ...loaded, nextRegSeq: Math.max(loaded.nextRegSeq || 0, observedMax) };
   });
 
   // Keep a live ref to the current state so the guarded dispatch can read
@@ -658,6 +753,23 @@ export const AppProvider: React.FC<{
     return Math.max(0, sessionInfo.session.capacity - enrolled);
   };
 
+  // Display-only preview of the next tracking code. The authoritative number
+  // is allocated inside the reducer at dispatch time (see ADD_REGISTRATION).
+  const peekNextRegistrationCode = () => {
+    const taken = new Set<string>();
+    state.registrations.forEach((r) => r.code && taken.add(r.code));
+    state.academicYears.forEach((y) =>
+      (y.archivedData?.registrations || []).forEach((r) => r.code && taken.add(r.code))
+    );
+    let seq = state.nextRegSeq;
+    let code = '';
+    do {
+      seq += 1;
+      code = makeRegistrationCode(currentJalaliYearForCodes(), seq);
+    } while (taken.has(code));
+    return code;
+  };
+
   const activeAcademicYear =
     state.academicYears.find((y) => y.id === state.activeYearId) || state.academicYears[0];
   const viewingAcademicYear =
@@ -688,6 +800,7 @@ export const AppProvider: React.FC<{
         getClassRegistrations,
         getSessionEnrolledCount,
         getSessionRemainingCapacity,
+        peekNextRegistrationCode,
       }}
     >
       {children}

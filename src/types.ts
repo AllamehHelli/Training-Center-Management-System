@@ -91,7 +91,12 @@ export type RegistrationStatus = 'pending' | 'approved' | 'cancelled';
 
 export interface Registration {
   id: string;
-  code: string; // T-101, T-102, ...
+  /**
+   * Global tracking code, unique across ALL academic years and never reused
+   * (even after deletions). Format: T-<jalali-year>-<4-digit sequence>,
+   * e.g. T-1405-0001. Issued only by the store's nextRegistrationCode().
+   */
+  code: string;
   studentId: string;
   classId: string;
   sessionId: string;
