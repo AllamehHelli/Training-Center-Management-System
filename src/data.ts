@@ -684,12 +684,15 @@ export function buildSeedData(): {
     },
   ];
 
+  // NOTE: never ship real WooCommerce consumer keys in seed data.
+  // Credentials must be entered by the admin at runtime (ideally via a
+  // server-side proxy — see VITE_WOO_PROXY_BASE / HI-5).
   const wooSettings: WooSettings = {
-    url: 'https://allamehhelli.ir',
-    consumerKey: 'ck_7b99c0892da0d720b06b97f0e6912ff956e18ac1',
-    consumerSecret: 'cs_8fa4492bfd9d838dfa735e076e0aefdb546959b4',
-    isConnected: true,
-    lastSync: '1403/07/04 - ساعت ۱۰:۳۰',
+    url: '',
+    consumerKey: '',
+    consumerSecret: '',
+    isConnected: false,
+    lastSync: '',
     syncLog: [
       {
         id: 'log-1',
