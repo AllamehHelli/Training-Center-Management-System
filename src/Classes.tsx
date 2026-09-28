@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { useAppStore } from './store';
 import { useFieldSettings } from './Settings';
-import { toPersianDigits, formatToman, calculateClassDuration } from './utils';
+import { toPersianDigits, formatToman, calculateClassDuration, parseSessionTimeRange, migrateSessionTimes } from './utils';
 import { ClassRoom, ClassSession, SessionKind, StudentGrade } from './types';
 import { Modal, ConfirmModal, ProgressBar, useToast, Field, InfoTooltip } from './ui';
 import { DayPicker, TimeRangePicker } from './SchedulePickers';
@@ -75,12 +75,18 @@ export const Classes: React.FC = () => {
       setFormGrade(c.grade);
       setFormTeacher(c.teacher);
       setFormTuition(c.tuition);
+      // ME-2: derive real start/end times by parsing the session `time` string
+      // (e.g. "۰۹:۰۰ الی ۱۳:۰۰") instead of guessing a fixed 16:00–17:30.
       setFormSessions(
-        c.sessions.map((s) => ({
-          ...s,
-          startTime: s.startTime || (s.time.includes('۱۷:۴۵') ? '17:45' : '16:00'),
-          endTime: s.endTime || (s.time.includes('۱۹:۱۵') ? '19:15' : '17:30'),
-        }))
+        c.sessions.map((s) => {
+          if (s.startTime && s.endTime) return { ...s };
+          const parsed = parseSessionTimeRange(s.time);
+          return {
+            ...s,
+            startTime: s.startTime || parsed?.startTime || '',
+            endTime: s.endTime || parsed?.endTime || '',
+          };
+        })
       );
     } else {
       setEditingClass(null);
@@ -237,6 +243,11 @@ export const Classes: React.FC = () => {
       return;
     }
 
+    // ME-2: normalize session times against their display `time` string before
+    // persisting, so a stale/guessed startTime/endTime can never be saved.
+    const normalizedSessions = migrateSessionTimes([{ id: 'form', sessions: formSessions }])[0]
+      .sessions as ClassSession[];
+
     if (editingClass) {
       const updated: ClassRoom = {
         ...editingClass,
@@ -244,7 +255,7 @@ export const Classes: React.FC = () => {
         grade: formGrade,
         teacher: formTeacher.trim(),
         tuition: formTuition,
-        sessions: formSessions,
+        sessions: normalizedSessions,
       };
       dispatch({ type: 'UPDATE_CLASS', payload: updated });
       showToast('مشخصات دوره آموزشی با موفقیت به‌روزرسانی شد', 'success');
@@ -255,7 +266,7 @@ export const Classes: React.FC = () => {
         grade: formGrade,
         teacher: formTeacher.trim(),
         tuition: formTuition,
-        sessions: formSessions,
+        sessions: normalizedSessions,
       };
       dispatch({ type: 'ADD_CLASS', payload: newClass });
       showToast(`دوره «${newClass.name}» با موفقیت افزوده شد`, 'success');

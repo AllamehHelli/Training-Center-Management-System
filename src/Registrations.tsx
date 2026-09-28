@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppStore, ARCHIVED_READONLY_MESSAGE } from './store';
 import { useFieldSettings } from './Settings';
 import {
@@ -38,7 +38,12 @@ import { JalaliDatePicker } from './JalaliDatePicker';
 import { PaymentDateModal } from './components/PaymentDateModal';
 import { StudentDossierModal } from './components/StudentDossierModal';
 
-export const Registrations: React.FC = () => {
+interface RegistrationsProps {
+  /** ME-3: filters carried over from the dashboard "view all" action. */
+  initialFilters?: Record<string, string>;
+}
+
+export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters }) => {
   const {
     state,
     dispatch,
@@ -52,8 +57,31 @@ export const Registrations: React.FC = () => {
   const { showToast } = useToast();
 
   // Filters & Search
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | RegistrationStatus>('all');
+  // ME-3: seed the filters from the dashboard "view all" hand-off so the user
+  // sees exactly the same result set, unpaginated.
+  const [searchTerm, setSearchTerm] = useState(initialFilters?.q ?? '');
+  const [statusFilter, setStatusFilter] = useState<'all' | RegistrationStatus>(
+    initialFilters?.status === 'approved' ||
+      initialFilters?.status === 'pending' ||
+      initialFilters?.status === 'cancelled'
+      ? initialFilters.status
+      : 'all'
+  );
+
+  // ME-3: apply a new filter hand-off even when the page is already mounted.
+  useEffect(() => {
+    if (!initialFilters) return;
+    setSearchTerm(initialFilters.q ?? '');
+    if (
+      initialFilters.status === 'approved' ||
+      initialFilters.status === 'pending' ||
+      initialFilters.status === 'cancelled'
+    ) {
+      setStatusFilter(initialFilters.status);
+    } else {
+      setStatusFilter('all');
+    }
+  }, [initialFilters]);
 
   // Modals state
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);

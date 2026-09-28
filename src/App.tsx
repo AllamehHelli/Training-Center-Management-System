@@ -59,6 +59,9 @@ const AppContent: React.FC = () => {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [hoveredNavId, setHoveredNavId] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState<JalaliDateRange>({ preset: 'all' });
+  // ME-3: filter hand-off from the dashboard table ("view all") to the
+  // registrations page.
+  const [registrationsFilters, setRegistrationsFilters] = useState<Record<string, string> | undefined>(undefined);
 
   const {
     state,
@@ -355,13 +358,17 @@ const AppContent: React.FC = () => {
           <div className="max-w-[1500px] mx-auto">
             {currentView === 'dashboard' && (
               <Dashboard
-                onNavigateToRegistrations={() => setCurrentView('registrations')}
+                onNavigateToRegistrations={(filters) => {
+                  // ME-3: carry the dashboard's active filters over.
+                  setRegistrationsFilters(filters && Object.keys(filters).length > 0 ? filters : undefined);
+                  setCurrentView('registrations');
+                }}
                 onNavigateToFinance={() => setCurrentView('finance')}
                 dateFilter={dateFilter}
                 onDateFilterChange={setDateFilter}
               />
             )}
-            {currentView === 'registrations' && <Registrations />}
+            {currentView === 'registrations' && <Registrations initialFilters={registrationsFilters} />}
             {currentView === 'students' && <Students />}
             {currentView === 'classes' && <Classes />}
             {currentView === 'finance' && <Finance />}

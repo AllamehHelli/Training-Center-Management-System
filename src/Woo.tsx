@@ -80,7 +80,7 @@ export const Woo: React.FC = () => {
   } = useAppStore();
   const { showToast } = useToast();
 
-  const [url, setUrl] = useState(state.wooSettings.url || 'https://allamehhelli.ir');
+  const [url, setUrl] = useState(state.wooSettings.url || '');
   const [consumerKey, setConsumerKey] = useState(state.wooSettings.consumerKey || '');
   const [consumerSecret, setConsumerSecret] = useState(state.wooSettings.consumerSecret || '');
   const [showSecret, setShowSecret] = useState(false);
@@ -495,7 +495,7 @@ export const Woo: React.FC = () => {
                   dir="ltr"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
-                  placeholder="https://allamehhelli.ir"
+                  placeholder="https://your-shop.example.com"
                   className="w-full px-3.5 py-2 text-xs bg-neutral-50 border border-neutral-200 rounded-xl focus:outline-hidden focus:border-neutral-900 font-mono focus:bg-white text-left"
                 />
               </Field>
