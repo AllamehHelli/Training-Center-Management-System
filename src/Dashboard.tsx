@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppStore } from './store';
 import { useFieldSettings } from './Settings';
 import {
@@ -27,6 +27,8 @@ import {
   IconCalendar,
   IconPhone,
   IconPlus,
+  IconChevronLeft,
+  IconChevronRight,
 } from './icons';
 import { SparklineWave } from './components/SparklineWave';
 import { StudentDossierModal } from './components/StudentDossierModal';
@@ -44,7 +46,7 @@ import {
 } from 'lucide-react';
 
 interface DashboardProps {
-  onNavigateToRegistrations: () => void;
+  onNavigateToRegistrations: (filters?: Record<string, string>) => void;
   onNavigateToFinance: () => void;
   dateFilter?: JalaliDateRange;
   onDateFilterChange?: (range: JalaliDateRange) => void;
@@ -260,6 +262,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
     safePage * TABLE_PAGE_SIZE,
     (safePage + 1) * TABLE_PAGE_SIZE
   );
+  const rangeStart = filteredRegistrations.length === 0 ? 0 : safePage * TABLE_PAGE_SIZE + 1;
+  const rangeEnd = Math.min((safePage + 1) * TABLE_PAGE_SIZE, filteredRegistrations.length);
+
+  // Reset to the first page whenever any active filter changes, so the user
+  // never lands on an out-of-range page after narrowing the result set.
+  useEffect(() => {
+    setTablePage(0);
+  }, [tableSearch, categoryFilter, statusFilter, paymentFilter, dateFilter?.preset, dateFilter?.startDate, dateFilter?.endDate]);
+
+  // ME-3: jump to the full registrations page carrying over every active
+  // filter (search / status) so nothing looks "missing".
+  const handleViewAllRegistrations = () => {
+    const params: Record<string, string> = {};
+    if (tableSearch.trim()) params.q = tableSearch.trim();
+    if (statusFilter !== 'all') params.status = statusFilter;
+    onNavigateToRegistrations(params);
+  };
 
   return (
     <div className="space-y-6">
@@ -295,7 +314,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           <button
             type="button"
-            onClick={onNavigateToRegistrations}
+            onClick={() => onNavigateToRegistrations()}
             className="px-4 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-white rounded-full text-xs font-semibold shadow-2xs transition-all flex items-center gap-1.5"
           >
             <IconPlus size={13} className="text-white/90" />
@@ -535,6 +554,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <span className="text-xs text-neutral-400 tabular-nums">
               {toPersianDigits(filteredRegistrations.length)} پرونده
             </span>
+            {filteredRegistrations.length > TABLE_PAGE_SIZE && (
+              <button
+                type="button"
+                onClick={handleViewAllRegistrations}
+                title="مشاهده‌ی کامل این فهرست در صفحه ثبت‌نام‌ها، با همان فیلترهای فعال"
+                className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-neutral-900 hover:bg-neutral-800 text-white text-[11px] font-semibold transition-colors"
+              >
+                مشاهده همه در صفحه ثبت‌نام
+                <IconArrowUpRight size={12} />
+              </button>
+            )}
           </div>
 
           {/* Search input & Select Dropdowns */}
@@ -759,6 +789,61 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </tbody>
           </table>
         </div>
+
+        {/* ME-3: Pagination footer — makes it explicit that more rows exist */}
+        {filteredRegistrations.length > TABLE_PAGE_SIZE && (
+          <div className="px-4 sm:px-5 py-3 border-t border-neutral-100 bg-neutral-50/40 flex flex-col sm:flex-row items-center justify-between gap-2.5">
+            <span className="text-[11px] text-neutral-500 tabular-nums">
+              نمایش {toPersianDigits(rangeStart)} تا {toPersianDigits(rangeEnd)} از{' '}
+              {toPersianDigits(filteredRegistrations.length)} پرونده
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setTablePage(Math.max(0, safePage - 1))}
+                disabled={safePage === 0}
+                title="صفحه قبلی"
+                className="p-1.5 rounded-lg border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {/* RTL: «next page» visually points left, «previous» points right */}
+                <IconChevronRight size={15} />
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i).map((i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setTablePage(i)}
+                  aria-current={i === safePage ? 'page' : undefined}
+                  className={`min-w-[28px] h-7 px-2 rounded-lg text-xs font-semibold tabular-nums border transition-colors ${
+                    i === safePage
+                      ? 'bg-neutral-900 text-white border-neutral-900'
+                      : 'bg-white text-neutral-600 border-neutral-200 hover:bg-neutral-50'
+                  }`}
+                >
+                  {toPersianDigits(i + 1)}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setTablePage(Math.min(totalPages - 1, safePage + 1))}
+                disabled={safePage >= totalPages - 1}
+                title="صفحه بعدی"
+                className="p-1.5 rounded-lg border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <IconChevronLeft size={15} />
+              </button>
+              <button
+                type="button"
+                onClick={handleViewAllRegistrations}
+                className="mr-2 px-3 h-7 rounded-lg text-[11px] font-semibold text-neutral-700 border border-neutral-200 bg-white hover:bg-neutral-50 transition-colors flex items-center gap-1"
+                title="بدون صفحه‌بندی، همه را در صفحه ثبت‌نام ببینید"
+              >
+                مشاهده همه
+                <IconArrowUpRight size={12} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ----------------------------------------------------------------- */}
