@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { useAppStore } from './store';
-import { toPersianDigits, getTodayJalali, formatToman } from './utils';
+import { toPersianDigits, getTodayJalali, formatToman, validateNationalId, toEnglishDigits } from './utils';
 import { ClassRoom, Student, Registration } from './types';
 import { useToast, Field, InfoTooltip } from './ui';
 import {
@@ -17,8 +17,67 @@ import {
   IconRefresh,
 } from './icons';
 
+/**
+ * CR-3: deterministic mock order feed. A real WooCommerce integration fetches
+ * paid orders via REST; here we emulate that feed with a FIXED list of sample
+ * orders so repeated syncs are idempotent (previously every click fabricated
+ * a brand-new student sharing the same national ID).
+ */
+interface MockWooOrder {
+  orderId: number;
+  billing: { first_name: string; last_name: string };
+  fatherName: string;
+  nationalId: string;
+  phone: string;
+  grade: string;
+  gpa: number;
+  school: string;
+  lineItem: { name: string; price: number };
+}
+
+const MOCK_WOO_ORDERS: MockWooOrder[] = [
+  {
+    orderId: 8841,
+    billing: { first_name: 'بردیا', last_name: 'قاسمی‌نژاد' },
+    fatherName: 'حمیدرضا',
+    nationalId: '0071122338',
+    phone: '09121998877',
+    grade: 'هفتم',
+    gpa: 19.9,
+    school: 'مدرسه استعدادهای درخشان',
+    lineItem: { name: 'دوره تیزهوشان هفتم', price: 14500000 },
+  },
+  {
+    orderId: 8842,
+    billing: { first_name: 'رها', last_name: 'موسوی' },
+    fatherName: 'جواد',
+    nationalId: '0082233446',
+    phone: '09122887766',
+    grade: 'هشتم',
+    gpa: 18.7,
+    school: 'دولصدفی',
+    lineItem: { name: 'دوره تقویتی هشتم', price: 12000000 },
+  },
+  {
+    orderId: 8843,
+    billing: { first_name: 'ابوالفضل', last_name: 'رستمی' },
+    fatherName: 'علی',
+    nationalId: 'abc-123', /* deliberately invalid -> review queue, never auto-imported */
+    phone: '09123776655',
+    grade: 'هفتم',
+    gpa: 17.2,
+    school: 'تیزهوشان',
+    lineItem: { name: 'دوره تیزهوشان هفتم', price: 14500000 },
+  },
+];
+
 export const Woo: React.FC = () => {
-  const { state, dispatch } = useAppStore();
+  const {
+    state,
+    dispatch,
+    isViewingArchived,
+    getSessionRemainingCapacity,
+  } = useAppStore();
   const { showToast } = useToast();
 
   const [url, setUrl] = useState(state.wooSettings.url || 'https://allamehhelli.ir');
@@ -197,76 +256,171 @@ export const Woo: React.FC = () => {
   };
 
   // Sync Orders -> Registrations & Students
+  // CR-3: orders now go through the SAME validation rules as the manual form:
+  //   - idempotency on the WooCommerce order number (wooOrderId),
+  //   - national-ID format check + uniqueness against existing students,
+  //   - valid class/session reference and remaining session capacity,
+  //   - no duplicate active registration for the same session.
+  // Anything that fails validation is routed to a review queue (log + toast)
+  // instead of being silently auto-imported.
   const handleSyncOrders = () => {
+    if (isViewingArchived) {
+      showToast(
+        'مشاهده سال بایگانی فقط-خواندنی است؛ همگامسازی سفارش ممکن نیست.',
+        'error'
+      );
+      return;
+    }
+
     setIsSyncingOrders(true);
 
     setTimeout(() => {
-      // Target existing class or fallback
-      const targetClass = state.classes[0];
-      const targetSession = targetClass?.sessions[0]?.id || 'ses-default';
+      const syncedOrderIds = new Set(
+        state.registrations.map((r) => r.wooOrderId).filter((v) => v !== undefined).map(String)
+      );
+      const existingNationalIds = new Set(state.students.map((st) => String(st.nationalId).trim()));
 
-      const mockOrderId = 8840 + Math.floor(Math.random() * 100);
-      const studentId = `std-woo-${mockOrderId}`;
-      const regId = `reg-woo-${mockOrderId}`;
-      const trackingCode = `T-WC${mockOrderId}`;
+      const newStudents: Student[] = [];
+      const newRegistrations: Registration[] = [];
+      const reviewQueue: { orderId: number; reason: string }[] = [];
 
-      const newStudent: Student = {
-        id: studentId,
-        firstName: 'بردیا',
-        lastName: 'قاسمی‌نژاد',
-        fatherName: 'حمیدرضا',
-        nationalId: '0071122334',
-        phones: [{ id: `p-${mockOrderId}`, label: 'پدر', number: '09121998877' }],
-        grade: targetClass ? targetClass.grade : 'هفتم',
-        gpa: 19.9,
-        school: 'مدرسه استعدادهای درخشان',
-        createdAt: getTodayJalali(),
-      };
+      MOCK_WOO_ORDERS.forEach((order) => {
+        const orderIdStr = String(order.orderId);
 
-      const newRegistration: Registration = {
-        id: regId,
-        code: trackingCode,
-        studentId: studentId,
-        classId: targetClass ? targetClass.id : 'cls-1',
-        sessionId: targetSession,
-        status: 'pending', // Pending verification
-        amount: targetClass ? targetClass.tuition : 14500000,
-        discount: 0,
-        plan: {
-          months: 0,
-          downPayment: targetClass ? targetClass.tuition : 14500000,
-          installments: [
-            {
-              id: `inst-woo-${mockOrderId}`,
-              title: 'تسویه کامل اینترنتی ووکامرس',
-              amount: targetClass ? targetClass.tuition : 14500000,
-              dueDate: getTodayJalali(),
-              paidAt: null, // Left for manual operator check
-            },
-          ],
-        },
-        date: getTodayJalali(),
-        notes: `سفارش شماره #${mockOrderId} ثبت شده در فروشگاه آنلاین ووکامرس`,
-      };
+        // 1) Idempotency: never import the same Woo order twice.
+        if (syncedOrderIds.has(orderIdStr)) {
+          reviewQueue.push({ orderId: order.orderId, reason: 'سفارش تکراری (قبلاً همگام شده)' });
+          return;
+        }
 
-      dispatch({
-        type: 'SYNC_WOO_ORDERS',
-        payload: {
-          newStudents: [newStudent],
-          newRegistrations: [newRegistration],
-        },
+        // 2) Field validity: national ID must be a valid Iranian code.
+        const nid = toEnglishDigits(String(order.nationalId)).trim();
+        const nidCheck = validateNationalId(nid);
+        if (!nidCheck.isValid) {
+          reviewQueue.push({ orderId: order.orderId, reason: nidCheck.message });
+          return;
+        }
+
+        // 3) Uniqueness: one student per national ID (same rule as manual form).
+        if (existingNationalIds.has(nid)) {
+          reviewQueue.push({ orderId: order.orderId, reason: 'کد ملی قبلاً ثبت شده است' });
+          return;
+        }
+
+        // 4) Resolve target class by grade (fallback: first class), then pick
+        //    the first session with remaining capacity (capacity enforcement).
+        let targetClass =
+          state.classes.find((c) => c.grade === order.grade) || state.classes[0];
+        if (!targetClass) {
+          reviewQueue.push({ orderId: order.orderId, reason: 'کلاسی برای این پایه واجد نیست' });
+          return;
+        }
+        let targetSessionId = '';
+        for (const ses of targetClass.sessions) {
+          if (getSessionRemainingCapacity(targetClass.id, ses.id) > 0) {
+            targetSessionId = ses.id;
+            break;
+          }
+        }
+        if (!targetSessionId) {
+          reviewQueue.push({ orderId: order.orderId, reason: 'ظرفیت تمام زنگ‌های این کلاس تکمیل است' });
+          return;
+        }
+
+        const studentId = `std-woo-${orderIdStr}`;
+        const regId = `reg-woo-${orderIdStr}`;
+        const trackingCode = `T-WC${orderIdStr}`;
+        const amount = order.lineItem.price || targetClass.tuition;
+
+        const student: Student = {
+          id: studentId,
+          firstName: order.billing.first_name,
+          lastName: order.billing.last_name,
+          fatherName: order.fatherName,
+          nationalId: nid,
+          phones: [{ id: `p-${orderIdStr}`, label: 'ولی', number: order.phone }],
+          grade: targetClass.grade,
+          gpa: order.gpa,
+          school: order.school,
+          createdAt: getTodayJalali(),
+        };
+
+        const registration: Registration = {
+          id: regId,
+          code: trackingCode,
+          studentId,
+          classId: targetClass.id,
+          sessionId: targetSessionId,
+          status: 'pending', // pending operator verification
+          amount,
+          discount: 0,
+          plan: {
+            months: 0,
+            downPayment: amount,
+            installments: [
+              {
+                id: `inst-woo-${orderIdStr}`,
+                title: 'تسویه کامل انترنتی ووکامرس',
+                amount,
+                dueDate: getTodayJalali(),
+                paidAt: null, // left for manual operator check
+              },
+            ],
+          },
+          date: getTodayJalali(),
+          notes: `سفارش شماره #${orderIdStr} ثبت شده در فروشگاه آنلاین ووکامرس`,
+          wooOrderId: order.orderId,
+          wooOrderSyncedAt: getTodayJalali(),
+        };
+
+        newStudents.push(student);
+        newRegistrations.push(registration);
+        existingNationalIds.add(nid);
+        syncedOrderIds.add(orderIdStr);
       });
 
-      dispatch({
-        type: 'ADD_WOO_LOG',
-        payload: {
-          time: getTodayJalali(),
-          message: `سفارش ووکامرس #${mockOrderId} (دانش‌آموز ${newStudent.firstName} ${newStudent.lastName}) دریافت شد و به صف انتظار اضافه گردید.`,
-          type: 'success',
-        },
+      if (newRegistrations.length > 0) {
+        dispatch({ type: 'SYNC_WOO_ORDERS', payload: { newStudents, newRegistrations } });
+        dispatch({
+          type: 'ADD_WOO_LOG',
+          payload: {
+            time: getTodayJalali(),
+            message: `${toPersianDigits(newRegistrations.length)} سفارش ووکامرس با اعتبارسنجی دریافت و به صف بررسی اضافه شد.`,
+            type: 'success',
+          },
+        });
+      }
+
+      reviewQueue.forEach((item) => {
+        dispatch({
+          type: 'ADD_WOO_LOG',
+          payload: {
+            time: getTodayJalali(),
+            message: `سفارش #${toPersianDigits(item.orderId)} به صف بررسی ارجاع شد: ${item.reason}`,
+            type: 'info',
+          },
+        });
       });
 
-      showToast(`سفارش #${mockOrderId} با کد پیگیری ${trackingCode} به صف بررسی اضافه شد`, 'success');
+      if (newRegistrations.length > 0 && reviewQueue.length > 0) {
+        showToast(
+          `${toPersianDigits(newRegistrations.length)} سفارش ثبت و ${toPersianDigits(reviewQueue.length)} مورد به صف بررسی ارجاع شد`,
+          'info'
+        );
+      } else if (newRegistrations.length > 0) {
+        showToast(
+          `${toPersianDigits(newRegistrations.length)} سفارش جدید با اعتبارسنجی به صف بررسی اضافه شد`,
+          'success'
+        );
+      } else if (reviewQueue.length > 0) {
+        showToast(
+          'سفارش جدیدی قابل ثبت خودکار نبود؛ موارد ناسازگار به صف بررسی ارجاع شدند',
+          'info'
+        );
+      } else {
+        showToast('سفارش جدیدی در فروشگاه ووکامرس وارد نشده است', 'info');
+      }
+
       setIsSyncingOrders(false);
     }, 900);
   };
@@ -415,8 +569,13 @@ export const Woo: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleSyncOrders}
-                  disabled={isSyncingOrders}
-                  className="mt-4 w-full py-2 bg-[#0E7C5B] hover:bg-[#0A3528] text-white rounded-lg text-xs font-medium transition-all shadow-xs"
+                  disabled={isSyncingOrders || isViewingArchived}
+                  title={isViewingArchived ? 'همگامسازی در حال مشاهده سال بایگانی ممکن نیست' : undefined}
+                  className={`mt-4 w-full py-2 rounded-lg text-xs font-medium transition-all shadow-xs ${
+                    isViewingArchived
+                      ? 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
+                      : 'bg-[#0E7C5B] hover:bg-[#0A3528] text-white'
+                  }`}
                 >
                   {isSyncingOrders ? 'در حال دریافت سفارش‌ها...' : 'شبیه‌سازی دریافت سفارش آنلاین'}
                 </button>

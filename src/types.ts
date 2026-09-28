@@ -101,6 +101,8 @@ export interface Registration {
   plan: PaymentPlan;
   date: string; // Jalali date
   notes?: string;
+  wooOrderId?: number | string; // CR-3: WooCommerce order number (idempotency key)
+  wooOrderSyncedAt?: string; // Jalali date the order was imported
 }
 
 export interface FieldSettings {

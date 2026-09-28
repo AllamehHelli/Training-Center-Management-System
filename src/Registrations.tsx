@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { useAppStore } from './store';
+import { useAppStore, ARCHIVED_READONLY_MESSAGE } from './store';
 import { useFieldSettings } from './Settings';
 import {
   toPersianDigits,
