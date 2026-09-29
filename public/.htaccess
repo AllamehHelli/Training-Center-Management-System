@@ -2,11 +2,15 @@
   RewriteEngine On
   RewriteBase /
 
-  # اگر درخواست به پوشه api ارسال شده، به index.php هدایت شود
-  RewriteCond %{REQUEST_URI} ^/api [NC]
-  RewriteRule ^api/(.*)$ api/index.php [QSA,L]
+  # انتقال هدر Authorization به PHP در هاست‌های آپاچی cPanel
+  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+  SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
 
-  # برای سایر مسیرها (مسیرهای React SPA): فایل‌ها و پوشه‌های واقعی مستقیماً سرو شوند
+  # اگر درخواست به مسیر api ارسال شده، به api/index.php هدایت شود
+  RewriteCond %{REQUEST_URI} ^/api(/.*)?$ [NC]
+  RewriteRule ^api(/.*)?$ api/index.php [QSA,L]
+
+  # مسیرهای React SPA: فایل‌ها و پوشه‌های واقعی مستقیماً سرو شوند
   RewriteRule ^index\.html$ - [L]
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
@@ -14,7 +18,7 @@
   RewriteRule . /index.html [L]
 </IfModule>
 
-# تنظیم هدرهای امنیتی و UTF-8
+# تنظیم هدرهای امنیتی و کدگذاری UTF-8
 AddDefaultCharset UTF-8
 <IfModule mod_headers.c>
   Header set X-Content-Type-Options "nosniff"

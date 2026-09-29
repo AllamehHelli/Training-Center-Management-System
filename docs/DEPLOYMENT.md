@@ -1,48 +1,67 @@
-# راهنمای راه‌اندازی نسخه عملیاتی (cPanel + MySQL)
+# راهنمای استقرار در هاست cPanel (بدون نیاز به Node.js)
 
-این پروژه حالا دو بخش دارد:
-- **فرانت‌اند** (`src/`): همان اپ React/Vite. با `VITE_API_BASE=/api` در حالت «عملیاتی» (لاگین + همگام‌سازی با سرور) و بدون آن در حالت «محلی» (localStorage، فقط دمو) build می‌شود.
-- **بک‌اند** (`server/`): Node.js + Express + MySQL — احراز هویت JWT، RBAC، لاگ ممیزی، API ثبت‌نام/مالی/آرشیو و پروکسی امن ووکامرس.
+این راهنما ویژه هاست‌های اشتراکی cPanel است که ماژول `Setup Node.js App` ندارند و صرفاً از **PHP** (نسخه ۷.۴ تا ۸.۳+) و پایگاه داده **MySQL / MariaDB** پشتیبانی می‌کنند.
 
-## گام ۱ — دیتابیس در cPanel
-1. cPanel → *MySQL Databases*: یک دیتابیس (مثلاً `regdb`) و یک کاربر بسازید و کاربر را به دیتابیس با تمام امتیازها وصل کنید.
-2. phpMyAdmin → دیتابیس → تب SQL → کل محتوای `server/sql/schema.sql` را Paste و Go بزنید.
+---
 
-## گام ۲ — ساخت اپ Node.js
-1. cPanel → *Setup Node.js App* → Create Application:
-   - Node.js version: 20+
-   - Application mode: Production
-   - Application root: `app/server`  (مسیر مطلق: `/home/USER/app/server`)
-   - Application URL: ساب‌دامین `reg.yourdomain.com`
-   - Application startup file: `app.cpanel.js`
-2. پس از ساخت، فایل `.env` داخل `app/server` بسازید (الگو: `server/.env.example`):
-   مقادیر DB، `JWT_SECRET` تصادفی (۹۶ هگز) و در صورت نیاز `WOO_*`.
-3. ترمینال هاست (SSH) یا cPanel Terminal:
-   ```bash
-   source ~/user-nodevenv/bin/activate   # venv که cPanel ساخته
-   cd ~/app/server
-   npm install --omit=dev
-   node src/migrate.js make-admin        # ساخت کاربر admin
-   ```
-4. برای انتقال داده فعلی مرورگر: در اپ محلی «خروجی پشتیبان» را بگیرید و سپس:
-   `node src/migrate.js seed-demo export.json`
+## معماری سامانه در هاست cPanel
 
-## گام ۳ — فرانت‌اند
-GitHub Actions (`.github/workflows/deploy.yml`) با هر push روی main:
-build با `VITE_API_BASE=/api` → rsync پوشه `dist/` به `~/app/dist` و `server/` به `~/app/server` → `npm install`.
-Secrets لازم: `DEPLOY_SSH_KEY`, `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH=/home/USERNAME`.
+1. **فرانت‌اند**: برنامه تک‌صفحه‌ای (SPA) ری‌اکت بیلد شده در پوشه `dist`.
+2. **بک‌اند**: اسکریپت سبک و پرسرعت `api/index.php` که تمام درخواست‌های `/api/*` را مدیریت کرده و نیازی به سرور نودجی‌اس ندارد.
+3. **دیتابیس**: MySQL سی‌پنل (همراه با ساخت خودکار جداول و کاربر پیش‌فرض مدیر).
 
-⚠️ مسیر سرو: چون اپ Node ریشه‌اش `app/server` است، تنظیمات cPanel باید طوری باشد که `DocumentRoot` عملاً `~/app` باشد تا هم `dist/` سرو شود و هم `/api/*` به Node برسد. ساده‌ترین روش: داخل `app/server` symlink بزنید:
-```bash
-ln -s ../dist ~/app/server/../dist   # server/src/index.js خودش ../../dist را سرو می‌کند
+---
+
+## گام ۱: ساخت دیتابیس در cPanel
+
+1. وارد cPanel شوید و روی **MySQL Databases** کلیک کنید.
+2. یک دیتابیس جدید بسازید (مثلاً `hwukjyfr_hellidb`).
+3. در پایین همان صفحه، یک کاربر جدید بسازید (مثلاً `hwukjyfr_dbuser` همراه با رمز عبور قوی).
+4. در بخش **Add User To Database**، کاربر را به دیتابیس متصل کرده و تیک گزینه **ALL PRIVILEGES** را بزنید و Make Changes کنید.
+
+> **نکته:** جداول پایگاه داده در اولین درخواست توسط خود سیستم به‌صورت خودکار ساخته می‌شوند؛ با این حال در صورت تمایل می‌توانید فایل `public/api/schema.sql` را در تب SQL در phpMyAdmin نیز ایمپورت نمایید.
+
+---
+
+## گام ۲: تنظیم مشخصات دیتابیس (`.env` یا `api/config.php`)
+
+در پوشه اصلی ساب‌دامین (`/home/hwukjyfr/tcms.blog.iqube.ir/`) فایل `.env` را باز کرده یا ویرایش کنید و مقادیر زیر را قرار دهید:
+
+```env
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=hwukjyfr_hellidb
+DB_USER=hwukjyfr_dbuser
+DB_PASS=رمز_عبور_دیتابیس_شما
+JWT_SECRET=یک_رشته_تصادفی_و_طولانی_برای_امنیت_توکن_ها
+
+# در صورت استفاده از فروشگاه ووکامرس:
+WOO_STORE_URL=https://your-shop.com
+WOO_CONSUMER_KEY=ck_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+WOO_CONSUMER_SECRET=cs_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
-(در کد، استاتیک از `../../dist` نسبت به `server/src` سرو می‌شود؛ یعنی `~/app/dist`.) اگر cPanel اجازه نداد، `dist/index.html` و assetها را مستقیم در `public_html/reg` آپلود و در `.env` سرور `CORS_ORIGIN=https://reg.yourdomain.com` بگذارید؛ آنگاه `VITE_API_BASE` را کامل بنویسید: `https://reg.yourdomain.com/api`.
 
-## گام ۴ — بررسی نهایی
-- `https://reg.yourdomain.com/api/health` → `{"ok":true}`
-- ورود با admin → صفحه برنامه؛ بدون لاژین، داده‌ای نمایش داده نمی‌شود.
-- تست اتصال ووکامرس از *صفحه Woo* → فقط وقتی کلیدهای سمت سرور درست باشند «متصل» می‌شود.
+---
 
-## امنیت
-- کلیدهای قدیمی `ck_/cs_` موجود در تاریخچه Git را در WooCommerce باطل (Revoke) کنید.
-- رمز پیش‌فرض admin را فوراً عوض کنید؛ JWT_SECRET را لو ندهید؛ `.env` هرگز commit نشود.
+## گام ۳: استقرار فایل‌ها (دو روش)
+
+### روش اول: استقرار خودکار با گیت‌هاب اکشن (توصیه‌شده)
+اکشن گیت‌هاب در مسیر `.github/workflows/deploy.yml` تنظیم شده است تا با هر `git push` به شاخه `main`:
+1. فرانت‌اند را با پرچم `VITE_API_BASE=/api` بیلد کند.
+2. کل محتویات بیلد شده (از جمله پوشه `api` و فایل‌های `.htaccess`) را از طریق FTP مستقیماً در ریشه ساب‌دامین شما آپلود کند.
+
+### روش دوم: آپلود دستی فایل‌های `dist`
+در صورتی که می‌خواهید دستی آپلود کنید:
+1. در سیستم خود یا مخزن دستور `npm run build` را اجرا کنید.
+2. محتویات داخل پوشه `dist/` (شامل `index.html`، پوشه `assets`، پوشه `api` و فایل `.htaccess`) را فشرده (Zip) کرده و در مسیر ساب‌دامین در cPanel اکسترکت نمایید.
+
+---
+
+## ورود به سامانه و اطلاعات پیش‌فرض
+
+- **آدرس سامانه**: `https://tcms.blog.iqube.ir/`
+- **نام کاربری پیش‌فرض**: `admin`
+- **رمز عبور پیش‌فرض**: `admin123`
+- **بررسی سلامت API**: `https://tcms.blog.iqube.ir/api/health`
+
+> ⚠️ بلافاصله پس از اولین ورود، رمز عبور مدیر سیستم را از بخش تنظیمات تغییر دهید.

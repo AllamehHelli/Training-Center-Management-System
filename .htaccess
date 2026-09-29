@@ -1,0 +1,50 @@
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # انتقال هدر Authorization به PHP در cPanel (حل مشکل لاگین در هاست‌های اشتراکی)
+  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+  SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+
+  # ۱. هدایت درخواست‌های API به اسکریپت PHP (در صورت وجود در ریشه، dist یا php-api)
+  RewriteCond %{REQUEST_URI} ^/api(/.*)?$ [NC]
+  RewriteCond %{DOCUMENT_ROOT}/api/index.php -f
+  RewriteRule ^api(/.*)?$ api/index.php [QSA,L]
+
+  RewriteCond %{REQUEST_URI} ^/api(/.*)?$ [NC]
+  RewriteCond %{DOCUMENT_ROOT}/dist/api/index.php -f
+  RewriteRule ^api(/.*)?$ dist/api/index.php [QSA,L]
+
+  RewriteCond %{REQUEST_URI} ^/api(/.*)?$ [NC]
+  RewriteCond %{DOCUMENT_ROOT}/php-api/index.php -f
+  RewriteRule ^api(/.*)?$ php-api/index.php [QSA,L]
+
+  # ۲. اگر کل سورس پروژه به همراه dist آپلود شده است (حل مشکل فعلی هاست شما)
+  RewriteCond %{DOCUMENT_ROOT}/dist/index.html -f
+  RewriteRule ^(index\.html)?$ dist/index.html [L]
+
+  RewriteCond %{DOCUMENT_ROOT}/dist/index.html -f
+  RewriteRule ^assets/(.*)$ dist/assets/$1 [L]
+
+  RewriteCond %{DOCUMENT_ROOT}/dist/index.html -f
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteCond %{REQUEST_URI} !^/api
+  RewriteRule . dist/index.html [L]
+
+  # ۳. در صورتی که فقط محتویات بیلد شده dist در هاست قرار دارد (استقرار استاندارد)
+  RewriteRule ^index\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteCond %{REQUEST_FILENAME} !-l
+  RewriteCond %{REQUEST_URI} !^/api
+  RewriteRule . /index.html [L]
+</IfModule>
+
+# کدگذاری پیش‌فرض UTF-8 و هدرهای امنیتی
+AddDefaultCharset UTF-8
+<IfModule mod_headers.c>
+  Header set X-Content-Type-Options "nosniff"
+  Header set X-Frame-Options "SAMEORIGIN"
+  Header set X-XSS-Protection "1; mode=block"
+</IfModule>

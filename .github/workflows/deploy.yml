@@ -1,4 +1,4 @@
-name: Build & Deploy to cPanel
+name: Build & Deploy to cPanel (PHP + MySQL)
 
 on:
   push:
@@ -15,18 +15,20 @@ jobs:
           node-version: 20
           cache: npm
           
-      - name: Install & build frontend (backend mode)
+      - name: Install & build frontend (cPanel PHP Backend Mode)
         run: |
           npm install --legacy-peer-deps
           VITE_API_BASE=/api npm run build
           
-      - name: Deploy files via FTP
+      - name: Deploy production build via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           server-dir: /
+          local-dir: ./dist/
+          dangerous-clean-slate: false
           exclude: |
             **/.git*
             **/.git*/**
