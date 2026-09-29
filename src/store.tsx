@@ -18,7 +18,7 @@ import { buildSeedData, migrateLegacyData, maxRegistrationSeq, makeRegistrationC
 import { getTodayJalali, migrateSessionTimes } from './utils';
 import { ToastType, ToastItem, getGlobalToast } from './ui';
 import { IconAlert, IconCheck, IconClose } from './icons';
-import { BACKEND_ENABLED, serverApi, syncAction } from './api';
+import { BACKEND_ENABLED, serverApi, syncAction, getToken } from './api';
 
 const STORAGE_KEY = 'helli_institute_data_v2';
 
@@ -861,6 +861,11 @@ export const AppProvider: React.FC<{
       });
     };
     window.addEventListener('helli:server-state', onServerState);
+    if (getToken()) {
+      serverApi.getState()
+        .then((st) => onServerState({ detail: st } as any))
+        .catch((err) => console.warn('AppProvider direct state fetch error:', err));
+    }
     return () => window.removeEventListener('helli:server-state', onServerState);
   }, []);
 

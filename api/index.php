@@ -274,6 +274,10 @@ function b64UrlEnc($data) {
     return str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($data));
 }
 function b64UrlDec($data) {
+    $remainder = strlen($data) % 4;
+    if ($remainder) {
+        $data .= str_repeat('=', 4 - $remainder);
+    }
     return base64_decode(str_replace(['-', '_'], ['+', '/'], $data));
 }
 function createToken($user, $secret) {
@@ -318,9 +322,18 @@ function getAuthUser($secret) {
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 // حذف پیشوند احتمالی پوشه یا /api
 $uri = preg_replace('#^.*?/api#', '', $uri);
-$uri = '/' . ltrim($uri, '/');
+$uri = '/' . trim($uri, '/');
 $method = $_SERVER['REQUEST_METHOD'];
 $body = parseJsonBody();
+
+if ($uri === '/' || $uri === '') {
+    jsonResp([
+        'ok' => true,
+        'service' => 'Allameh Helli TCMS API',
+        'status' => 'online',
+        'health' => '/api/health'
+    ]);
+}
 
 // مسیر بررسی وضعیت سلامتی سیستم (Health Check)
 if ($uri === '/health') {

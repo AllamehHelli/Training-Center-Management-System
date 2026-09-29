@@ -16,6 +16,12 @@ export const LoginPage: React.FC<{ onDone: () => void }> = ({ onDone }) => {
     try {
       const r = await serverApi.login(username.trim(), password);
       setToken(r.token);
+      try {
+        const st = await serverApi.getState();
+        window.dispatchEvent(new CustomEvent('helli:server-state', { detail: st }));
+      } catch (loadErr) {
+        console.warn('Initial server state fetch failed:', loadErr);
+      }
       onDone();
     } catch (ex: any) {
       setErr(ex?.status === 401 ? 'نام کاربری یا رمز عبور نادرست است.' : `خطا: ${ex.message}`);

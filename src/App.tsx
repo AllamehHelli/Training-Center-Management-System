@@ -8,6 +8,7 @@ import { AppProvider, useAppStore, DEMO_TOOLS_ENABLED } from './store';
 import { SettingsProvider } from './Settings';
 import { ToastProvider, useToast, ConfirmModal } from './ui';
 import { getTodayJalali, toPersianDigits, downloadCSV } from './utils';
+import { BACKEND_ENABLED, clearToken, getToken } from './api';
 
 // Icons & Lucide
 import {
@@ -313,22 +314,33 @@ const AppContent: React.FC = () => {
               )}
             </button>
 
-            {/* User Profile Avatar Capsule (Sarah Mitchell / Super admin) */}
-            {/* CR-4: the sidebar avatar is a decorative placeholder — there is no
-                authentication in this client-only build. Never present it as a
-                real, named logged-in user (PII + false sense of security). */}
-            <div className="flex items-center gap-2 pr-1 sm:pr-2 border-r border-neutral-200/70" title="این نسخه احراز هویت ندارد؛ برای محیط عملیاتی به بک‌اند + لاگین نیاز است (docs/SECURITY.md)">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-neutral-800 to-neutral-700 text-white flex items-center justify-center text-xs font-bold shadow-2xs">
+            {/* User Profile Avatar Capsule */}
+            <div className="flex items-center gap-2 pr-1 sm:pr-2 border-r border-neutral-200/70">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-700 to-indigo-900 text-white flex items-center justify-center text-xs font-bold shadow-2xs">
                 <UserRound size={14} />
               </div>
               <div className="hidden xl:block text-right leading-tight">
                 <span className="block text-xs font-bold text-neutral-900">
-                  کاربر محلی
+                  {BACKEND_ENABLED && getToken() ? 'مدیر سامانه' : 'کاربر محلی'}
                 </span>
-                <span className="block text-[10px] text-neutral-400 font-medium">
-                  بدون احراز هویت
+                <span className="block text-[10px] text-emerald-600 font-medium">
+                  {BACKEND_ENABLED && getToken() ? 'متصل به سرور' : 'حالت آفلاین'}
                 </span>
               </div>
+              {BACKEND_ENABLED && getToken() && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearToken();
+                    window.location.reload();
+                  }}
+                  className="p-1.5 text-neutral-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors mr-1"
+                  title="خروج از سامانه"
+                  aria-label="خروج از حساب کاربری"
+                >
+                  <LogOut size={15} />
+                </button>
+              )}
             </div>
           </div>
         </header>
