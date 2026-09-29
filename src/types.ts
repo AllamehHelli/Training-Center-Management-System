@@ -21,7 +21,40 @@ export interface Student {
   grade: StudentGrade;
   gpa: number; // 0 to 20
   school: string;
+  counselorId?: string; // شناسه مشاور اختصاص داده شده
+  counselorName?: string; // نام مشاور جهت دسترسی سریع
   createdAt: string; // Jalali or ISO
+}
+
+export interface Teacher {
+  id: string;
+  firstName: string;
+  lastName: string;
+  nationalId?: string;
+  phone?: string;
+  email?: string;
+  specialty: string; // زمینه تخصصی / درس، مثل "ریاضی و هندسه تیزهوشان"
+  degree?: string;    // مدرک تحصیلی / دانشگاه
+  notes?: string;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Counselor {
+  id: string;
+  firstName: string;
+  lastName: string;
+  nationalId?: string;
+  phone?: string;
+  email?: string;
+  specialty?: string; // تخصص مشاوره، مثل "برنامه‌ریزی کنکور و تیزهوشان"
+  grades?: string[];  // پایه‌های تحت پوشش
+  maxCapacity?: number; // ظرفیت دانش‌آموز (پیش‌فرض ۳۰)
+  notes?: string;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export type SessionKind = 'even' | 'odd' | 'custom';
@@ -48,6 +81,7 @@ export interface ClassRoom {
   id: string;
   name: string;
   grade: StudentGrade;
+  teacherId?: string; // شناسه استاد از بانک اساتید
   teacher: string;
   sessions: ClassSession[];
   tuition: number; // in Tomans

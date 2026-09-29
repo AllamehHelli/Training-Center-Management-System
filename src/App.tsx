@@ -31,6 +31,8 @@ import {
   Menu,
   X,
   UserRound,
+  GraduationCap,
+  HeartHandshake,
 } from 'lucide-react';
 import { LogoHelli } from './Logo';
 import { CommandPalette } from './components/CommandPalette';
@@ -41,6 +43,8 @@ import { Dashboard } from './Dashboard';
 import { Registrations } from './Registrations';
 import { Students } from './Students';
 import { Classes } from './Classes';
+import { Teachers } from './Teachers';
+import { Counselors } from './Counselors';
 import { Finance } from './Finance';
 import { Woo } from './Woo';
 import { SettingsPage } from './SettingsPage';
@@ -49,7 +53,9 @@ type ViewMode =
   | 'dashboard'
   | 'registrations'
   | 'students'
+  | 'counselors'
   | 'classes'
+  | 'teachers'
   | 'finance'
   | 'woo'
   | 'settings';
@@ -84,7 +90,9 @@ const AppContent: React.FC = () => {
     { id: 'dashboard', label: 'داشبورد مدیریتی', icon: LayoutDashboard },
     { id: 'registrations', label: 'مدیریت ثبت‌نام‌ها', icon: ClipboardList },
     { id: 'students', label: 'پرونده دانش‌آموزان', icon: Users },
+    { id: 'counselors', label: 'بانک مشاوران', icon: HeartHandshake },
     { id: 'classes', label: 'کلاس‌ها و زنگ‌ها', icon: Compass },
+    { id: 'teachers', label: 'بانک اساتید', icon: GraduationCap },
     { id: 'finance', label: 'امور مالی و اقساط', icon: CreditCard },
     { id: 'woo', label: 'فروشگاه ووکامرس', icon: ShoppingBag },
     { id: 'settings', label: 'تنظیمات و دوره‌ها', icon: Sliders },
@@ -386,7 +394,9 @@ const AppContent: React.FC = () => {
             )}
             {currentView === 'registrations' && <Registrations initialFilters={registrationsFilters} />}
             {currentView === 'students' && <Students />}
+            {currentView === 'counselors' && <Counselors />}
             {currentView === 'classes' && <Classes />}
+            {currentView === 'teachers' && <Teachers />}
             {currentView === 'finance' && <Finance />}
             {currentView === 'woo' && <Woo />}
             {currentView === 'settings' && <SettingsPage />}

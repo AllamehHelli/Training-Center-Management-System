@@ -285,12 +285,46 @@ function ensureDatabaseSchema($pdo, $adminPass) {
           ip VARCHAR(45) NOT NULL DEFAULT '',
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+        CREATE TABLE IF NOT EXISTS teachers (
+          id VARCHAR(64) NOT NULL PRIMARY KEY,
+          first_name VARCHAR(64) NOT NULL,
+          last_name VARCHAR(64) NOT NULL,
+          national_id VARCHAR(10) NOT NULL DEFAULT '',
+          phone VARCHAR(32) NOT NULL DEFAULT '',
+          email VARCHAR(128) NOT NULL DEFAULT '',
+          specialty VARCHAR(128) NOT NULL DEFAULT '',
+          degree VARCHAR(128) NOT NULL DEFAULT '',
+          notes TEXT NULL,
+          is_active TINYINT(1) NOT NULL DEFAULT 1,
+          created_at VARCHAR(32) NULL,
+          updated_at VARCHAR(32) NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+        CREATE TABLE IF NOT EXISTS counselors (
+          id VARCHAR(64) NOT NULL PRIMARY KEY,
+          first_name VARCHAR(64) NOT NULL,
+          last_name VARCHAR(64) NOT NULL,
+          national_id VARCHAR(10) NOT NULL DEFAULT '',
+          phone VARCHAR(32) NOT NULL DEFAULT '',
+          email VARCHAR(128) NOT NULL DEFAULT '',
+          specialty VARCHAR(128) NOT NULL DEFAULT '',
+          grades JSON NULL,
+          max_capacity INT NOT NULL DEFAULT 30,
+          notes TEXT NULL,
+          is_active TINYINT(1) NOT NULL DEFAULT 1,
+          created_at VARCHAR(32) NULL,
+          updated_at VARCHAR(32) NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         ");
 
         // ارتقای ساختار ستون‌های قدیمی در صورت وجود
         ensureColumn($pdo, 'students', 'grade', "VARCHAR(32) NOT NULL DEFAULT 'هفتم'");
         ensureColumn($pdo, 'students', 'school', "VARCHAR(128) NOT NULL DEFAULT ''");
+        ensureColumn($pdo, 'students', 'counselor_id', "VARCHAR(64) NULL");
+        ensureColumn($pdo, 'students', 'counselor_name', "VARCHAR(128) NULL");
         ensureColumn($pdo, 'classes', 'tuition', "BIGINT NOT NULL DEFAULT 0");
+        ensureColumn($pdo, 'classes', 'teacher_id', "VARCHAR(64) NULL");
         ensureColumn($pdo, 'registrations', 'plan', "JSON NULL");
         ensureColumn($pdo, 'registrations', 'amount', "BIGINT NOT NULL DEFAULT 0");
         ensureColumn($pdo, 'registrations', 'discount', "INT NOT NULL DEFAULT 0");
@@ -455,6 +489,8 @@ function mapStudent($r) {
         'grade' => $r['grade'] ?: 'هفتم',
         'gpa' => $r['gpa'] !== null ? (float)$r['gpa'] : 0,
         'school' => $r['school'] ?: ($r['previous_school'] ?? ''),
+        'counselorId' => $r['counselor_id'] ?? null,
+        'counselorName' => $r['counselor_name'] ?? null,
         'phones' => json_decode($r['phones'], true) ?: [],
         'emails' => json_decode($r['emails'], true) ?: [],
         'birthDate' => $r['birth_date'] ?? '',
@@ -473,6 +509,7 @@ function mapClass($r) {
         'id' => $r['id'],
         'name' => $r['name'],
         'grade' => $r['grade'],
+        'teacherId' => $r['teacher_id'] ?? null,
         'teacher' => $r['teacher'] ?? '',
         'capacity' => (int)$r['capacity'],
         'tuition' => (float)($r['tuition'] ?? 0),
@@ -481,6 +518,41 @@ function mapClass($r) {
         'sessions' => json_decode($r['sessions'], true) ?: [],
         'createdAt' => $r['created_at'],
         'updatedAt' => $r['updated_at'] ?? $r['created_at']
+    ];
+}
+
+function mapTeacher($r) {
+    return [
+        'id' => $r['id'],
+        'firstName' => $r['first_name'],
+        'lastName' => $r['last_name'],
+        'nationalId' => $r['national_id'] ?? '',
+        'phone' => $r['phone'] ?? '',
+        'email' => $r['email'] ?? '',
+        'specialty' => $r['specialty'] ?? '',
+        'degree' => $r['degree'] ?? '',
+        'notes' => $r['notes'] ?? '',
+        'isActive' => (bool)$r['is_active'],
+        'createdAt' => $r['created_at'] ?? '',
+        'updatedAt' => $r['updated_at'] ?? ''
+    ];
+}
+
+function mapCounselor($r) {
+    return [
+        'id' => $r['id'],
+        'firstName' => $r['first_name'],
+        'lastName' => $r['last_name'],
+        'nationalId' => $r['national_id'] ?? '',
+        'phone' => $r['phone'] ?? '',
+        'email' => $r['email'] ?? '',
+        'specialty' => $r['specialty'] ?? '',
+        'grades' => json_decode($r['grades'] ?? '[]', true) ?: [],
+        'maxCapacity' => (int)($r['max_capacity'] ?? 30),
+        'notes' => $r['notes'] ?? '',
+        'isActive' => (bool)$r['is_active'],
+        'createdAt' => $r['created_at'] ?? '',
+        'updatedAt' => $r['updated_at'] ?? ''
     ];
 }
 
@@ -712,6 +784,8 @@ if ($uri === '/state' && $method === 'GET') {
     $students = array_map('mapStudent', $pdo->query("SELECT * FROM students ORDER BY created_at DESC")->fetchAll());
     $classes = array_map('mapClass', $pdo->query("SELECT * FROM classes ORDER BY created_at ASC")->fetchAll());
     $registrations = array_map('mapReg', $pdo->query("SELECT * FROM registrations ORDER BY created_at DESC")->fetchAll());
+    $teachers = array_map('mapTeacher', $pdo->query("SELECT * FROM teachers ORDER BY created_at DESC")->fetchAll());
+    $counselors = array_map('mapCounselor', $pdo->query("SELECT * FROM counselors ORDER BY created_at DESC")->fetchAll());
 
     $settingsRows = $pdo->query("SELECT k, v FROM settings")->fetchAll();
     $settings = [];
@@ -737,6 +811,8 @@ if ($uri === '/state' && $method === 'GET') {
         'nextRegSeq' => (int)getAppStateValue($pdo, 'nextRegSeq', 0),
         'students' => $students,
         'classes' => $classes,
+        'teachers' => $teachers,
+        'counselors' => $counselors,
         'registrations' => $registrations,
         'settings' => $settings,
         'archivedData' => $archivedData
@@ -751,8 +827,8 @@ if ($uri === '/students' && $method === 'POST') {
     $s = $body;
     try {
         $stmt = $pdo->prepare("
-        INSERT INTO students (id, national_id, first_name, last_name, father_name, birth_date, grade, gpa, school, city, neighborhood, address, phones, emails, previous_school, fields, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO students (id, national_id, first_name, last_name, father_name, birth_date, grade, gpa, school, city, neighborhood, address, phones, emails, previous_school, fields, notes, counselor_id, counselor_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmt->execute([
             $s['id'],
@@ -771,7 +847,9 @@ if ($uri === '/students' && $method === 'POST') {
             json_encode($s['emails'] ?? [], JSON_UNESCAPED_UNICODE),
             $s['previousSchool'] ?? '',
             json_encode($s['fields'] ?? new stdClass(), JSON_UNESCAPED_UNICODE),
-            $s['notes'] ?? ''
+            $s['notes'] ?? '',
+            $s['counselorId'] ?? null,
+            $s['counselorName'] ?? null
         ]);
         logAudit($pdo, $user['uid'], 'ADD_STUDENT', 'student', $s['id'], ['name' => $s['firstName'] . ' ' . $s['lastName']]);
         jsonResp(['ok' => true]);
@@ -790,7 +868,8 @@ if (preg_match('#^/students/([^/]+)$#', $uri, $m)) {
             UPDATE students SET
               national_id = ?, first_name = ?, last_name = ?, father_name = ?, birth_date = ?,
               grade = ?, gpa = ?, school = ?, city = ?, neighborhood = ?, address = ?,
-              phones = ?, emails = ?, previous_school = ?, fields = ?, notes = ?
+              phones = ?, emails = ?, previous_school = ?, fields = ?, notes = ?,
+              counselor_id = ?, counselor_name = ?
             WHERE id = ?
             ");
             $stmt->execute([
@@ -810,6 +889,8 @@ if (preg_match('#^/students/([^/]+)$#', $uri, $m)) {
                 $s['previousSchool'] ?? '',
                 json_encode($s['fields'] ?? new stdClass(), JSON_UNESCAPED_UNICODE),
                 $s['notes'] ?? '',
+                $s['counselorId'] ?? null,
+                $s['counselorName'] ?? null,
                 $id
             ]);
             logAudit($pdo, $user['uid'], 'UPDATE_STUDENT', 'student', $id);
@@ -836,8 +917,8 @@ if ($uri === '/classes' && $method === 'POST') {
     $capacity = array_reduce($sessions, fn($carry, $x) => $carry + ((int)($x['capacity'] ?? 0)), 0);
 
     $stmt = $pdo->prepare("
-    INSERT INTO classes (id, name, grade, teacher, capacity, tuition, day, time, sessions)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO classes (id, name, grade, teacher, capacity, tuition, day, time, sessions, teacher_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
     $stmt->execute([
         $c['id'],
@@ -848,7 +929,8 @@ if ($uri === '/classes' && $method === 'POST') {
         (float)($c['tuition'] ?? 0),
         $c['day'] ?? '',
         $c['time'] ?? '',
-        json_encode($sessions, JSON_UNESCAPED_UNICODE)
+        json_encode($sessions, JSON_UNESCAPED_UNICODE),
+        $c['teacherId'] ?? null
     ]);
     logAudit($pdo, $user['uid'], 'ADD_CLASS', 'class', $c['id'], ['name' => $c['name']]);
     jsonResp(['ok' => true, 'sessions' => $sessions]);
@@ -877,7 +959,7 @@ if (preg_match('#^/classes/([^/]+)$#', $uri, $m)) {
         $capacity = array_reduce($sessions, fn($carry, $x) => $carry + ((int)($x['capacity'] ?? 0)), 0);
 
         $stmt = $pdo->prepare("
-        UPDATE classes SET name = ?, grade = ?, teacher = ?, capacity = ?, tuition = ?, day = ?, time = ?, sessions = ?
+        UPDATE classes SET name = ?, grade = ?, teacher = ?, capacity = ?, tuition = ?, day = ?, time = ?, sessions = ?, teacher_id = ?
         WHERE id = ?
         ");
         $stmt->execute([
@@ -889,6 +971,7 @@ if (preg_match('#^/classes/([^/]+)$#', $uri, $m)) {
             $c['day'] ?? '',
             $c['time'] ?? '',
             json_encode($sessions, JSON_UNESCAPED_UNICODE),
+            $c['teacherId'] ?? null,
             $id
         ]);
         logAudit($pdo, $user['uid'], 'UPDATE_CLASS', 'class', $id);
@@ -898,6 +981,156 @@ if (preg_match('#^/classes/([^/]+)$#', $uri, $m)) {
         $stmt = $pdo->prepare("DELETE FROM classes WHERE id = ?");
         $stmt->execute([$id]);
         logAudit($pdo, $user['uid'], 'DELETE_CLASS', 'class', $id);
+        jsonResp(['ok' => true]);
+    }
+}
+
+// -------------------------------------------------------------
+// ۹.۱. مدیریت بانک اساتید (Teachers CRUD)
+// -------------------------------------------------------------
+if ($uri === '/teachers' && $method === 'GET') {
+    requirePerm($user, 'read');
+    $stmt = $pdo->query("SELECT * FROM teachers ORDER BY created_at DESC");
+    jsonResp(array_map('mapTeacher', $stmt->fetchAll()));
+}
+
+if ($uri === '/teachers' && $method === 'POST') {
+    requirePerm($user, 'write');
+    $t = $body;
+    $id = !empty($t['id']) ? $t['id'] : ('tch-' . round(microtime(true) * 1000));
+    $stmt = $pdo->prepare("
+    INSERT INTO teachers (id, first_name, last_name, national_id, phone, email, specialty, degree, notes, is_active, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ");
+    $now = getTodayJalaliString();
+    $stmt->execute([
+        $id,
+        $t['firstName'] ?? '',
+        $t['lastName'] ?? '',
+        $t['nationalId'] ?? '',
+        $t['phone'] ?? '',
+        $t['email'] ?? '',
+        $t['specialty'] ?? '',
+        $t['degree'] ?? '',
+        $t['notes'] ?? '',
+        isset($t['isActive']) ? ($t['isActive'] ? 1 : 0) : 1,
+        $t['createdAt'] ?? $now,
+        $now
+    ]);
+    logAudit($pdo, $user['uid'], 'ADD_TEACHER', 'teacher', $id);
+    jsonResp(['ok' => true, 'id' => $id]);
+}
+
+if (preg_match('#^/teachers/([^/]+)$#', $uri, $m)) {
+    $id = $m[1];
+    if ($method === 'PUT') {
+        requirePerm($user, 'write');
+        $t = $body;
+        $now = getTodayJalaliString();
+        $stmt = $pdo->prepare("
+        UPDATE teachers SET
+          first_name = ?, last_name = ?, national_id = ?, phone = ?, email = ?,
+          specialty = ?, degree = ?, notes = ?, is_active = ?, updated_at = ?
+        WHERE id = ?
+        ");
+        $stmt->execute([
+            $t['firstName'] ?? '',
+            $t['lastName'] ?? '',
+            $t['nationalId'] ?? '',
+            $t['phone'] ?? '',
+            $t['email'] ?? '',
+            $t['specialty'] ?? '',
+            $t['degree'] ?? '',
+            $t['notes'] ?? '',
+            isset($t['isActive']) ? ($t['isActive'] ? 1 : 0) : 1,
+            $now,
+            $id
+        ]);
+        logAudit($pdo, $user['uid'], 'UPDATE_TEACHER', 'teacher', $id);
+        jsonResp(['ok' => true]);
+    } elseif ($method === 'DELETE') {
+        requirePerm($user, 'write');
+        $stmt = $pdo->prepare("DELETE FROM teachers WHERE id = ?");
+        $stmt->execute([$id]);
+        // حذف وابستگی از کلاس‌ها
+        $pdo->prepare("UPDATE classes SET teacher_id = NULL WHERE teacher_id = ?")->execute([$id]);
+        logAudit($pdo, $user['uid'], 'DELETE_TEACHER', 'teacher', $id);
+        jsonResp(['ok' => true]);
+    }
+}
+
+// -------------------------------------------------------------
+// ۹.۲. مدیریت بانک مشاوران (Counselors CRUD)
+// -------------------------------------------------------------
+if ($uri === '/counselors' && $method === 'GET') {
+    requirePerm($user, 'read');
+    $stmt = $pdo->query("SELECT * FROM counselors ORDER BY created_at DESC");
+    jsonResp(array_map('mapCounselor', $stmt->fetchAll()));
+}
+
+if ($uri === '/counselors' && $method === 'POST') {
+    requirePerm($user, 'write');
+    $cn = $body;
+    $id = !empty($cn['id']) ? $cn['id'] : ('cns-' . round(microtime(true) * 1000));
+    $stmt = $pdo->prepare("
+    INSERT INTO counselors (id, first_name, last_name, national_id, phone, email, specialty, grades, max_capacity, notes, is_active, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ");
+    $now = getTodayJalaliString();
+    $stmt->execute([
+        $id,
+        $cn['firstName'] ?? '',
+        $cn['lastName'] ?? '',
+        $cn['nationalId'] ?? '',
+        $cn['phone'] ?? '',
+        $cn['email'] ?? '',
+        $cn['specialty'] ?? '',
+        json_encode($cn['grades'] ?? [], JSON_UNESCAPED_UNICODE),
+        (int)($cn['maxCapacity'] ?? 30),
+        $cn['notes'] ?? '',
+        isset($cn['isActive']) ? ($cn['isActive'] ? 1 : 0) : 1,
+        $cn['createdAt'] ?? $now,
+        $now
+    ]);
+    logAudit($pdo, $user['uid'], 'ADD_COUNSELOR', 'counselor', $id);
+    jsonResp(['ok' => true, 'id' => $id]);
+}
+
+if (preg_match('#^/counselors/([^/]+)$#', $uri, $m)) {
+    $id = $m[1];
+    if ($method === 'PUT') {
+        requirePerm($user, 'write');
+        $cn = $body;
+        $now = getTodayJalaliString();
+        $stmt = $pdo->prepare("
+        UPDATE counselors SET
+          first_name = ?, last_name = ?, national_id = ?, phone = ?, email = ?,
+          specialty = ?, grades = ?, max_capacity = ?, notes = ?, is_active = ?, updated_at = ?
+        WHERE id = ?
+        ");
+        $stmt->execute([
+            $cn['firstName'] ?? '',
+            $cn['lastName'] ?? '',
+            $cn['nationalId'] ?? '',
+            $cn['phone'] ?? '',
+            $cn['email'] ?? '',
+            $cn['specialty'] ?? '',
+            json_encode($cn['grades'] ?? [], JSON_UNESCAPED_UNICODE),
+            (int)($cn['maxCapacity'] ?? 30),
+            $cn['notes'] ?? '',
+            isset($cn['isActive']) ? ($cn['isActive'] ? 1 : 0) : 1,
+            $now,
+            $id
+        ]);
+        logAudit($pdo, $user['uid'], 'UPDATE_COUNSELOR', 'counselor', $id);
+        jsonResp(['ok' => true]);
+    } elseif ($method === 'DELETE') {
+        requirePerm($user, 'write');
+        $stmt = $pdo->prepare("DELETE FROM counselors WHERE id = ?");
+        $stmt->execute([$id]);
+        // حذف وابستگی از دانش‌آموزان
+        $pdo->prepare("UPDATE students SET counselor_id = NULL, counselor_name = NULL WHERE counselor_id = ?")->execute([$id]);
+        logAudit($pdo, $user['uid'], 'DELETE_COUNSELOR', 'counselor', $id);
         jsonResp(['ok' => true]);
     }
 }

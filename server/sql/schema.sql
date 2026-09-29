@@ -56,6 +56,8 @@ CREATE TABLE IF NOT EXISTS students (
   gpa          DECIMAL(4,2) NULL,             -- معدل؛ ۰ مقدار مشروع است
   fields       JSON         NULL,             -- فیلدهای سفارشی تنظیمات
   notes        TEXT         NULL,
+  counselor_id VARCHAR(36)  NULL,             -- ارجاع به مشاور تحصیلی تخصیص‌یافته
+  counselor_name VARCHAR(128) NULL,
   created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uq_students_nid (national_id),    -- یکتایی سراسری کد ملی (CR-3/HI-2)
@@ -69,6 +71,8 @@ CREATE TABLE IF NOT EXISTS classes (
   grade     VARCHAR(32)  NOT NULL,
   teacher   VARCHAR(128) NOT NULL DEFAULT '',
   capacity  INT          NOT NULL DEFAULT 0,   -- مجموع ظرفیت زنگ‌ها
+  tuition   BIGINT       NOT NULL DEFAULT 0,
+  teacher_id VARCHAR(36) NULL,                 -- ارجاع به بانک اساتید
   day       VARCHAR(32)  NOT NULL DEFAULT '',
   time      VARCHAR(32)  NOT NULL DEFAULT '',
   sessions  JSON         NULL,                  -- [{id,title,day,time,startTime,endTime,capacity,enrolledCount}]
@@ -125,6 +129,39 @@ CREATE TABLE IF NOT EXISTS audit_log (
   created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_audit_entity (entity, entity_id),
   KEY idx_audit_time (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------- بانک اساتید ----------
+CREATE TABLE IF NOT EXISTS teachers (
+  id          VARCHAR(64)  NOT NULL PRIMARY KEY,
+  first_name  VARCHAR(64)  NOT NULL,
+  last_name   VARCHAR(64)  NOT NULL,
+  national_id VARCHAR(10)  NOT NULL DEFAULT '',
+  phone       VARCHAR(32)  NOT NULL DEFAULT '',
+  email       VARCHAR(128) NOT NULL DEFAULT '',
+  specialty   VARCHAR(128) NOT NULL DEFAULT '',
+  degree      VARCHAR(128) NOT NULL DEFAULT '',
+  notes       TEXT         NULL,
+  is_active   TINYINT(1)   NOT NULL DEFAULT 1,
+  created_at  VARCHAR(32)  NULL,
+  updated_at  VARCHAR(32)  NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------- بانک مشاوران تحصیلی ----------
+CREATE TABLE IF NOT EXISTS counselors (
+  id           VARCHAR(64)  NOT NULL PRIMARY KEY,
+  first_name   VARCHAR(64)  NOT NULL,
+  last_name    VARCHAR(64)  NOT NULL,
+  national_id  VARCHAR(10)  NOT NULL DEFAULT '',
+  phone        VARCHAR(32)  NOT NULL DEFAULT '',
+  email        VARCHAR(128) NOT NULL DEFAULT '',
+  specialty    VARCHAR(128) NOT NULL DEFAULT '',
+  grades       JSON         NULL,
+  max_capacity INT          NOT NULL DEFAULT 30,
+  notes        TEXT         NULL,
+  is_active    TINYINT(1)   NOT NULL DEFAULT 1,
+  created_at   VARCHAR(32)  NULL,
+  updated_at   VARCHAR(32)  NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------- صف بررسی سفارش‌های ناسازگار ووکامرس (CR-3) ----------

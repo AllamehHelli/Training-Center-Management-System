@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Student, ClassRoom, Registration, WooSettings, AcademicYear, SyncLogItem } from './types';
+import { Student, ClassRoom, Registration, WooSettings, AcademicYear, SyncLogItem, Teacher, Counselor } from './types';
 import { getTodayJalali, addMonthsJalali, migrateSessionTimes } from './utils';
 
 /**
@@ -50,10 +50,125 @@ export function normalizeRegistrationCodes<T extends { code?: string; wooOrderId
   });
 }
 
+export const seedTeachers: Teacher[] = [
+  {
+    id: 'tch-1',
+    firstName: 'علیرضا',
+    lastName: 'میرزایی',
+    nationalId: '0012345678',
+    phone: '09121110001',
+    email: 'dr.mirzaei@helli.ir',
+    specialty: 'ریاضی و هندسه تیزهوشان',
+    degree: 'دکتری ریاضی کاربردی دانشگاه صنعتی شریف',
+    notes: 'مدرس باسابقه المپیاد ریاضی و آزمون‌های ورودی سمپاد با بیش از ۱۵ سال سابقه',
+    isActive: true,
+    createdAt: '1403/01/15',
+  },
+  {
+    id: 'tch-2',
+    firstName: 'آرش',
+    lastName: 'معتمدی',
+    nationalId: '0023456789',
+    phone: '09122220002',
+    email: 'motamedi@helli.ir',
+    specialty: 'فیزیک پیشرفته و المپیاد',
+    degree: 'کارشناسی ارشد فیزیک ذرات دانشگاه تهران',
+    notes: 'سرگروه فیزیک تیزهوشان و طراح آزمون‌های آزمایشی کشوری',
+    isActive: true,
+    createdAt: '1403/01/20',
+  },
+  {
+    id: 'tch-3',
+    firstName: 'مسعود',
+    lastName: 'صادقلو',
+    nationalId: '0034567890',
+    phone: '09123330003',
+    email: 'sadeghloo@helli.ir',
+    specialty: 'ادبیات، درک مطلب و هوش کلامی',
+    degree: 'کارشناسی ارشد زبان و ادبیات فارسی دانشگاه علامه طباطبایی',
+    notes: 'مولف کتاب‌های کمک‌آموزشی تیزهوشان و مدرس دوره‌های تقویت استعداد تحلیلی',
+    isActive: true,
+    createdAt: '1403/02/01',
+  },
+  {
+    id: 'tch-4',
+    firstName: 'نیما',
+    lastName: 'بهرامی',
+    nationalId: '0045678901',
+    phone: '09124440004',
+    email: 'bahrami@helli.ir',
+    specialty: 'شیمی و زیست‌شناسی المپیاد',
+    degree: 'دکتری بیوشیمی دانشگاه علوم پزشکی تهران',
+    notes: 'مدرس دوره‌های آمادگی مرحله اول و دوم المپیادهای علمی کشور',
+    isActive: true,
+    createdAt: '1403/02/10',
+  },
+  {
+    id: 'tch-5',
+    firstName: 'امیرحسام',
+    lastName: 'حسینی',
+    nationalId: '0056789012',
+    phone: '09125550005',
+    email: 'a.hosseini@helli.ir',
+    specialty: 'ترکیبیات و هوش المپیاد ریاضی',
+    degree: 'کارشناسی علوم کامپیوتر دانشگاه شریف (مدال طلای کشوری)',
+    notes: 'مدال طلای المپیاد ریاضی کشوری و مدرس تخصصی مباحث ترکیبیات و نظریه اعداد',
+    isActive: true,
+    createdAt: '1403/02/15',
+  },
+];
+
+export const seedCounselors: Counselor[] = [
+  {
+    id: 'cns-1',
+    firstName: 'فرهاد',
+    lastName: 'سلیمانی',
+    nationalId: '0067890123',
+    phone: '09126660001',
+    email: 'soleimani@helli.ir',
+    specialty: 'برنامه‌ریزی جامع تیزهوشان و هدایت تحصیلی',
+    grades: ['هفتم', 'هشتم', 'نهم'],
+    maxCapacity: 35,
+    notes: 'دکتری روانشناسی تربیتی و مشاور ارشد موسسه با تمرکز بر مدیریت استرس و راهبردهای یادگیری',
+    isActive: true,
+    createdAt: '1403/01/10',
+  },
+  {
+    id: 'cns-2',
+    firstName: 'مریم',
+    lastName: 'کاظمی',
+    nationalId: '0078901234',
+    phone: '09127770002',
+    email: 'kazemi@helli.ir',
+    specialty: 'مشاوره پایه ششم و آزمون ورودی هفتم',
+    grades: ['ششم', 'هفتم'],
+    maxCapacity: 30,
+    notes: 'کارشناسی ارشد مشاوره تحصیلی و متخصص آمادگی روانی و آزمون‌های ورودی مدارس استعدادهای درخشان',
+    isActive: true,
+    createdAt: '1403/01/12',
+  },
+  {
+    id: 'cns-3',
+    firstName: 'بهنام',
+    lastName: 'احمدی',
+    nationalId: '0089012345',
+    phone: '09128880003',
+    email: 'ahmadi@helli.ir',
+    specialty: 'مشاوره تخصصی مسیر المپیاد و نخبگان',
+    grades: ['هشتم', 'نهم'],
+    maxCapacity: 25,
+    notes: 'مشاور انگیزشی و تخصصی دانش‌پژوهان المپیادهای علمی سمپاد',
+    isActive: true,
+    createdAt: '1403/01/18',
+  },
+];
+
 export function buildSeedData(): {
   students: Student[];
   classes: ClassRoom[];
   registrations: Registration[];
+  teachers: Teacher[];
+  counselors: Counselor[];
   wooSettings: WooSettings;
   academicYears: AcademicYear[];
   activeYearId: string;
@@ -78,6 +193,8 @@ export function buildSeedData(): {
       grade: 'نهم',
       gpa: 19.95,
       school: 'مدرسه شهید بهشتی',
+      counselorId: 'cns-1',
+      counselorName: 'فرهاد سلیمانی',
       createdAt: '1403/06/10',
     },
     {
@@ -93,6 +210,8 @@ export function buildSeedData(): {
       grade: 'نهم',
       gpa: 20.0,
       school: 'فرزانگان ۱',
+      counselorId: 'cns-1',
+      counselorName: 'فرهاد سلیمانی',
       createdAt: '1403/06/12',
     },
     {
@@ -107,6 +226,8 @@ export function buildSeedData(): {
       grade: 'هشتم',
       gpa: 19.78,
       school: 'علامه حلی ۱',
+      counselorId: 'cns-1',
+      counselorName: 'فرهاد سلیمانی',
       createdAt: '1403/06/15',
     },
     {
@@ -122,6 +243,8 @@ export function buildSeedData(): {
       grade: 'هشتم',
       gpa: 19.85,
       school: 'فرزانگان ۲',
+      counselorId: 'cns-1',
+      counselorName: 'فرهاد سلیمانی',
       createdAt: '1403/06/18',
     },
     {
@@ -136,6 +259,8 @@ export function buildSeedData(): {
       grade: 'هفتم',
       gpa: 19.9,
       school: 'علامه حلی ۳',
+      counselorId: 'cns-2',
+      counselorName: 'مریم کاظمی',
       createdAt: '1403/06/20',
     },
     {
@@ -151,6 +276,8 @@ export function buildSeedData(): {
       grade: 'هفتم',
       gpa: 20.0,
       school: 'فرزانگان ۳',
+      counselorId: 'cns-2',
+      counselorName: 'مریم کاظمی',
       createdAt: '1403/06/22',
     },
     {
@@ -165,6 +292,8 @@ export function buildSeedData(): {
       grade: 'ششم',
       gpa: 19.65,
       school: 'دبستان معرفت نو',
+      counselorId: 'cns-2',
+      counselorName: 'مریم کاظمی',
       createdAt: '1403/06/25',
     },
     {
@@ -179,6 +308,8 @@ export function buildSeedData(): {
       grade: 'ششم',
       gpa: 19.92,
       school: 'دبستان روشنگر',
+      counselorId: 'cns-2',
+      counselorName: 'مریم کاظمی',
       createdAt: '1403/06/26',
     },
     {
@@ -194,6 +325,8 @@ export function buildSeedData(): {
       grade: 'نهم',
       gpa: 19.5,
       school: 'علامه حلی ۵',
+      counselorId: 'cns-3',
+      counselorName: 'بهنام احمدی',
       createdAt: '1403/07/01',
     },
     {
@@ -208,6 +341,8 @@ export function buildSeedData(): {
       grade: 'هشتم',
       gpa: 19.8,
       school: 'فرزانگان ۵',
+      counselorId: 'cns-3',
+      counselorName: 'بهنام احمدی',
       createdAt: '1403/07/02',
     },
     {
@@ -222,6 +357,8 @@ export function buildSeedData(): {
       grade: 'هفتم',
       gpa: 19.4,
       school: 'شهید بهشتی ۲',
+      counselorId: 'cns-3',
+      counselorName: 'بهنام احمدی',
       createdAt: '1403/07/03',
     },
     {
@@ -236,6 +373,8 @@ export function buildSeedData(): {
       grade: 'ششم',
       gpa: 20.0,
       school: 'دبستان مهرآیین',
+      counselorId: 'cns-3',
+      counselorName: 'بهنام احمدی',
       createdAt: '1403/07/04',
     },
   ];
@@ -246,7 +385,8 @@ export function buildSeedData(): {
       id: 'cls-1',
       name: 'هوش تحلیلی و استعداد تحلیلی نهم',
       grade: 'نهم',
-      teacher: 'استاد دکتر علیرضا میرزایی',
+      teacherId: 'tch-1',
+      teacher: 'دکتر علیرضا میرزایی',
       tuition: 14500000,
       sessions: [
         {
@@ -271,7 +411,8 @@ export function buildSeedData(): {
       id: 'cls-2',
       name: 'ریاضیات پیشرفته و المپیاد هشتم',
       grade: 'هشتم',
-      teacher: 'مهندس سعید فدایی',
+      teacherId: 'tch-2',
+      teacher: 'مهندس آرش معتمدی',
       tuition: 13800000,
       sessions: [
         {
@@ -304,7 +445,8 @@ export function buildSeedData(): {
       id: 'cls-3',
       name: 'علوم تجربی تیزهوشان هفتم (فیزیک و زیست)',
       grade: 'هفتم',
-      teacher: 'دکتر مریم سلیمانی',
+      teacherId: 'tch-4',
+      teacher: 'دکتر نیما بهرامی',
       tuition: 12500000,
       sessions: [
         {
@@ -329,7 +471,8 @@ export function buildSeedData(): {
       id: 'cls-4',
       name: 'جامع تیزهوشان ششم (ورودی هفتم علامه حلی)',
       grade: 'ششم',
-      teacher: 'تیم اساتید مجرب حلی',
+      teacherId: 'tch-1',
+      teacher: 'دکتر علیرضا میرزایی',
       tuition: 16000000,
       sessions: [
         {
@@ -354,6 +497,7 @@ export function buildSeedData(): {
       id: 'cls-5',
       name: 'ادبیات و درک مطلب پیشرفته نهم',
       grade: 'نهم',
+      teacherId: 'tch-3',
       teacher: 'استاد مسعود صادقلو',
       tuition: 9500000,
       sessions: [
@@ -371,7 +515,8 @@ export function buildSeedData(): {
       id: 'cls-6',
       name: 'هندسه و ترکیبیات المپیاد ریاضی',
       grade: 'هشتم',
-      teacher: 'مدال‌آور طلای المپیاد امیر حسام',
+      teacherId: 'tch-5',
+      teacher: 'مهندس امیرحسام حسینی',
       tuition: 11000000,
       sessions: [
         {
@@ -820,6 +965,8 @@ export function buildSeedData(): {
     students,
     classes: seedClasses,
     registrations,
+    teachers: seedTeachers,
+    counselors: seedCounselors,
     wooSettings,
     academicYears,
     activeYearId: 'ay-1403-1404',
@@ -835,6 +982,8 @@ export function migrateLegacyData(parsed: any): {
   students: Student[];
   classes: ClassRoom[];
   registrations: Registration[];
+  teachers: Teacher[];
+  counselors: Counselor[];
   wooSettings: WooSettings;
   academicYears: AcademicYear[];
   activeYearId: string;
@@ -1074,6 +1223,8 @@ export function migrateLegacyData(parsed: any): {
     students: migratedStudents,
     classes: migratedClasses,
     registrations: migratedRegistrations,
+    teachers: Array.isArray(parsed?.teachers) && parsed.teachers.length > 0 ? parsed.teachers : seed.teachers,
+    counselors: Array.isArray(parsed?.counselors) && parsed.counselors.length > 0 ? parsed.counselors : seed.counselors,
     wooSettings,
     academicYears,
     activeYearId,

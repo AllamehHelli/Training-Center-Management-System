@@ -35,6 +35,7 @@ import {
   IconAlert,
   IconClose,
 } from './icons';
+import { HeartHandshake, UserCheck, Sparkles, Filter, Users } from 'lucide-react';
 import { LogoHelli } from './Logo';
 import { StudentDossierModal } from './components/StudentDossierModal';
 
@@ -46,6 +47,7 @@ export const Students: React.FC = () => {
   // Filters & Search
   const [searchTerm, setSearchTerm] = useState('');
   const [gradeFilter, setGradeFilter] = useState<'all' | string>('all');
+  const [counselorFilter, setCounselorFilter] = useState<'all' | 'unassigned' | string>('all');
 
   // Modals
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -53,6 +55,15 @@ export const Students: React.FC = () => {
   const [dossierStudent, setDossierStudent] = useState<Student | null>(null);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  // Quick Assign Counselor Modal State
+  const [quickAssignStudent, setQuickAssignStudent] = useState<Student | null>(null);
+  const [quickAssignCounselorId, setQuickAssignCounselorId] = useState<string>('');
+
+  // Bulk Assign Counselor Modal State
+  const [isBulkAssignModalOpen, setIsBulkAssignModalOpen] = useState(false);
+  const [bulkAssignTargetCounselorId, setBulkAssignTargetCounselorId] = useState<string>('');
+  const [bulkAssignSelectedStudentIds, setBulkAssignSelectedStudentIds] = useState<string[]>([]);
 
   // Form State
   const [formFirstName, setFormFirstName] = useState('');
@@ -62,6 +73,7 @@ export const Students: React.FC = () => {
   const [formGrade, setFormGrade] = useState<StudentGrade>(grades[0] || 'هفتم');
   const [formGpa, setFormGpa] = useState<string>('20.00');
   const [formSchool, setFormSchool] = useState('');
+  const [formCounselorId, setFormCounselorId] = useState<string>('');
   const [formPhones, setFormPhones] = useState<PhoneNumber[]>([
     { id: 'p-init-1', label: 'پدر', number: '0912' },
   ]);
@@ -74,17 +86,20 @@ export const Students: React.FC = () => {
   // Filter students
   const filteredStudents = state.students.filter((student) => {
     if (gradeFilter !== 'all' && student.grade !== gradeFilter) return false;
+    if (counselorFilter === 'unassigned' && student.counselorId) return false;
+    if (counselorFilter !== 'all' && counselorFilter !== 'unassigned' && student.counselorId !== counselorFilter) return false;
     if (!searchTerm) return true;
 
     const term = searchTerm.trim().toLowerCase();
     const fullName = `${student.firstName} ${student.lastName}`.toLowerCase();
     const nid = student.nationalId.toLowerCase();
     const school = student.school.toLowerCase();
+    const cName = (student.counselorName || '').toLowerCase();
     const matchesPhone = student.phones.some((p) =>
       p.number.includes(toEnglishDigits(term))
     );
 
-    return fullName.includes(term) || nid.includes(term) || school.includes(term) || matchesPhone;
+    return fullName.includes(term) || nid.includes(term) || school.includes(term) || cName.includes(term) || matchesPhone;
   });
 
   // Open Form for Add or Edit
@@ -99,6 +114,7 @@ export const Students: React.FC = () => {
       setFormGrade(student.grade);
       setFormGpa(student.gpa.toString());
       setFormSchool(student.school);
+      setFormCounselorId(student.counselorId || '');
       setFormPhones(student.phones.length > 0 ? [...student.phones] : [{ id: 'p-1', label: 'پدر', number: '' }]);
     } else {
       setEditingStudent(null);
@@ -109,6 +125,7 @@ export const Students: React.FC = () => {
       setFormGrade('هفتم');
       setFormGpa('20.00');
       setFormSchool('');
+      setFormCounselorId('');
       setFormPhones([{ id: `p-${Date.now()}-1`, label: 'پدر', number: '' }]);
     }
     setIsFormModalOpen(true);
@@ -140,6 +157,8 @@ export const Students: React.FC = () => {
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
+    const selectedCounselor = (state.counselors || []).find((c) => c.id === formCounselorId);
+
     const input = {
       firstName: formFirstName,
       lastName: formLastName,
@@ -149,6 +168,8 @@ export const Students: React.FC = () => {
       gpa: formGpa,
       school: formSchool,
       phones: formPhones,
+      counselorId: formCounselorId || undefined,
+      counselorName: selectedCounselor ? `${selectedCounselor.firstName} ${selectedCounselor.lastName}` : undefined,
     };
 
     const errors = validateStudent(input, fieldSettings, state.students, editingStudent?.id);
@@ -172,6 +193,65 @@ export const Students: React.FC = () => {
     }
 
     setIsFormModalOpen(false);
+  };
+
+  // Quick Assign Counselor for Single Student
+  const handleQuickAssignSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickAssignStudent) return;
+
+    const selectedCns = (state.counselors || []).find((c) => c.id === quickAssignCounselorId);
+    const updated: Student = {
+      ...quickAssignStudent,
+      counselorId: quickAssignCounselorId || undefined,
+      counselorName: selectedCns ? `${selectedCns.firstName} ${selectedCns.lastName}` : undefined,
+    };
+
+    dispatch({ type: 'UPDATE_STUDENT', payload: updated });
+    showToast(
+      selectedCns
+        ? `مشاور ${selectedCns.firstName} ${selectedCns.lastName} به ${quickAssignStudent.firstName} ${quickAssignStudent.lastName} اختصاص یافت`
+        : `تخصیص مشاور برای ${quickAssignStudent.firstName} ${quickAssignStudent.lastName} لغو شد`,
+      'success'
+    );
+    setQuickAssignStudent(null);
+  };
+
+  // Bulk Assign Counselor
+  const handleBulkAssignSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (bulkAssignSelectedStudentIds.length === 0) {
+      showToast('لطفاً دست‌کم یک دانش‌آموز را انتخاب کنید', 'info');
+      return;
+    }
+    const selectedCns = (state.counselors || []).find((c) => c.id === bulkAssignTargetCounselorId);
+    if (!selectedCns && bulkAssignTargetCounselorId) {
+      showToast('مشاور انتخاب‌شده معتبر نیست', 'error');
+      return;
+    }
+
+    bulkAssignSelectedStudentIds.forEach((stdId) => {
+      const std = state.students.find((s) => s.id === stdId);
+      if (std) {
+        dispatch({
+          type: 'UPDATE_STUDENT',
+          payload: {
+            ...std,
+            counselorId: bulkAssignTargetCounselorId || undefined,
+            counselorName: selectedCns ? `${selectedCns.firstName} ${selectedCns.lastName}` : undefined,
+          },
+        });
+      }
+    });
+
+    showToast(
+      selectedCns
+        ? `مشاور ${selectedCns.firstName} ${selectedCns.lastName} به ${toPersianDigits(bulkAssignSelectedStudentIds.length)} دانش‌آموز اختصاص یافت`
+        : `تخصیص مشاور برای ${toPersianDigits(bulkAssignSelectedStudentIds.length)} دانش‌آموز برداشته شد`,
+      'success'
+    );
+    setIsBulkAssignModalOpen(false);
+    setBulkAssignSelectedStudentIds([]);
   };
 
   // Delete Student
@@ -320,6 +400,20 @@ export const Students: React.FC = () => {
         <div className="flex items-center gap-2.5">
           <button
             type="button"
+            onClick={() => {
+              const unassignedIds = state.students.filter((s) => !s.counselorId).map((s) => s.id);
+              setBulkAssignSelectedStudentIds(unassignedIds);
+              setBulkAssignTargetCounselorId('');
+              setIsBulkAssignModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-teal-800 bg-teal-50 border border-teal-200/80 rounded-full hover:bg-teal-100 transition-colors shadow-2xs"
+            title="تخصیص گروهی دانش‌آموزان به مشاوران"
+          >
+            <HeartHandshake size={14} className="text-teal-600" />
+            <span>تخصیص گروهی مشاور</span>
+          </button>
+          <button
+            type="button"
             onClick={handleExportCSV}
             className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-neutral-700 bg-white border border-neutral-200/80 rounded-full hover:bg-neutral-50 transition-colors shadow-2xs"
           >
@@ -357,41 +451,66 @@ export const Students: React.FC = () => {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="جستجو در نام، کد ملی، نام مدرسه یا تمامی شماره‌های تماس..."
+            placeholder="جستجو در نام، کد ملی، نام مدرسه، نام مشاور یا تمامی شماره‌های تماس..."
             className="w-full pl-3.5 pr-9 py-2 text-xs bg-neutral-50 hover:bg-neutral-100/70 focus:bg-white border border-neutral-200/80 rounded-full focus:outline-hidden transition-all"
           />
         </div>
 
-        {/* Grade tabs */}
-        <div className="flex flex-wrap items-center gap-1 p-1 bg-neutral-100/80 rounded-full shrink-0">
-          <button
-            type="button"
-            onClick={() => setGradeFilter('all')}
-            className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
-              gradeFilter === 'all'
-                ? 'bg-white text-neutral-900 font-bold shadow-2xs'
-                : 'text-neutral-500 hover:text-neutral-900'
-            }`}
-          >
-            همه پایه‌ها ({toPersianDigits(state.students.length)})
-          </button>
-          {grades.map((grade) => {
-            const count = state.students.filter((s) => s.grade === grade).length;
-            return (
-              <button
-                key={grade}
-                type="button"
-                onClick={() => setGradeFilter(grade)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
-                  gradeFilter === grade
-                    ? 'bg-white text-neutral-900 font-bold shadow-2xs'
-                    : 'text-neutral-500 hover:text-neutral-900'
-                }`}
-              >
-                پایه {grade} ({toPersianDigits(count)})
-              </button>
-            );
-          })}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Counselor Filter Dropdown */}
+          <div className="flex items-center gap-1.5">
+            <HeartHandshake size={14} className="text-teal-600" />
+            <select
+              value={counselorFilter}
+              onChange={(e) => setCounselorFilter(e.target.value)}
+              className="px-3 py-1.5 text-xs bg-neutral-50 border border-neutral-200/80 rounded-full font-bold text-neutral-700 focus:outline-hidden focus:border-teal-600 shadow-2xs"
+            >
+              <option value="all">همه مشاوران ({toPersianDigits(state.students.length)})</option>
+              <option value="unassigned">
+                بدون مشاور ({toPersianDigits(state.students.filter((s) => !s.counselorId).length)})
+              </option>
+              {(state.counselors || []).map((c) => {
+                const assigned = state.students.filter((s) => s.counselorId === c.id).length;
+                return (
+                  <option key={c.id} value={c.id}>
+                    مشاور {c.firstName} {c.lastName} ({toPersianDigits(assigned)} دانش‌آموز)
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          {/* Grade tabs */}
+          <div className="flex flex-wrap items-center gap-1 p-1 bg-neutral-100/80 rounded-full shrink-0">
+            <button
+              type="button"
+              onClick={() => setGradeFilter('all')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+                gradeFilter === 'all'
+                  ? 'bg-white text-neutral-900 font-bold shadow-2xs'
+                  : 'text-neutral-500 hover:text-neutral-900'
+              }`}
+            >
+              همه پایه‌ها ({toPersianDigits(state.students.length)})
+            </button>
+            {grades.map((grade) => {
+              const count = state.students.filter((s) => s.grade === grade).length;
+              return (
+                <button
+                  key={grade}
+                  type="button"
+                  onClick={() => setGradeFilter(grade)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+                    gradeFilter === grade
+                      ? 'bg-white text-neutral-900 font-bold shadow-2xs'
+                      : 'text-neutral-500 hover:text-neutral-900'
+                  }`}
+                >
+                  پایه {grade} ({toPersianDigits(count)})
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -403,6 +522,7 @@ export const Students: React.FC = () => {
               <tr>
                 <th className="py-3 px-4 font-semibold">دانش‌آموز</th>
                 <th className="py-3 px-4 font-semibold">کد ملی</th>
+                <th className="py-3 px-4 font-semibold">مشاور تحصیلی</th>
                 <th className="py-3 px-4 font-semibold">نام پدر</th>
                 <th className="py-3 px-4 font-semibold">پایه و معدل</th>
                 <th className="py-3 px-4 font-semibold">شماره‌های تماس</th>
@@ -413,7 +533,7 @@ export const Students: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {filteredStudents.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     هیچ دانش‌آموزی با این مشخصات یافت نشد.
                   </td>
                 </tr>
@@ -443,6 +563,42 @@ export const Students: React.FC = () => {
                       {/* National ID */}
                       <td className="py-3 px-4 font-mono font-medium text-slate-700">
                         {toPersianDigits(std.nationalId)}
+                      </td>
+
+                      {/* Counselor */}
+                      <td className="py-3 px-4">
+                        {std.counselorId ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-teal-50 text-teal-800 border border-teal-200/80 rounded-lg text-[11px] font-bold">
+                              <HeartHandshake size={12} className="text-teal-600 shrink-0" />
+                              <span>{std.counselorName || 'مشاور تحصیلی'}</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setQuickAssignStudent(std);
+                                setQuickAssignCounselorId(std.counselorId || '');
+                              }}
+                              className="text-[10px] text-slate-400 hover:text-teal-700 underline"
+                              title="تغییر مشاور"
+                            >
+                              تغییر
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setQuickAssignStudent(std);
+                              setQuickAssignCounselorId('');
+                            }}
+                            className="inline-flex items-center gap-1 px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/80 rounded-lg text-[10px] font-semibold transition-colors"
+                            title="تخصیص مشاور از بانک مشاوران"
+                          >
+                            <HeartHandshake size={11} className="text-amber-600 shrink-0" />
+                            <span>تخصیص مشاور</span>
+                          </button>
+                        )}
                       </td>
 
                       {/* Father Name */}
@@ -613,6 +769,36 @@ export const Students: React.FC = () => {
                   placeholder="مثلاً: فرزانگان ۱ / علامه حلی ۳ / دبستان معرفت نو"
                   className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#0E7C5B] focus:bg-white"
                 />
+              </Field>
+            </div>
+
+            {/* Counselor Selection from Bank */}
+            <div className="sm:col-span-2">
+              <Field label="مشاور تحصیلی اختصاصی (بانک مشاوران)">
+                <div className="space-y-1">
+                  <select
+                    value={formCounselorId}
+                    onChange={(e) => setFormCounselorId(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:border-teal-600 focus:bg-white"
+                  >
+                    <option value="">-- بدون مشاور / بعداً تخصیص داده شود --</option>
+                    {(state.counselors || []).map((c) => {
+                      const assignedCount = state.students.filter(
+                        (s) => s.counselorId === c.id && s.id !== editingStudent?.id
+                      ).length;
+                      const maxCap = c.maxCapacity || 30;
+                      const free = Math.max(0, maxCap - assignedCount);
+                      return (
+                        <option key={c.id} value={c.id}>
+                          مشاور {c.firstName} {c.lastName} ({c.specialty || 'هدایت تحصیلی'}) — ظرفیت خالی: {toPersianDigits(free)} از {toPersianDigits(maxCap)} نفر
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <p className="text-[10px] text-slate-400">
+                    انتخاب مشاور از بانک مشاوران موسسه برای پیگیری برنامه‌ریزی درسی و ارزیابی‌های روان‌شناختی دانش‌آموز
+                  </p>
+                </div>
               </Field>
             </div>
           </div>
@@ -871,6 +1057,189 @@ export const Students: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Quick Assign Counselor Modal */}
+      {quickAssignStudent && (
+        <Modal
+          isOpen={Boolean(quickAssignStudent)}
+          onClose={() => setQuickAssignStudent(null)}
+          title={`تخصیص مشاور به ${quickAssignStudent.firstName} ${quickAssignStudent.lastName}`}
+          maxWidth="md"
+        >
+          <form onSubmit={handleQuickAssignSubmit} className="space-y-4 text-xs font-medium" dir="rtl">
+            <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200/80 space-y-1">
+              <div className="font-bold text-neutral-800">
+                دانش‌آموز: {quickAssignStudent.firstName} {quickAssignStudent.lastName} (پایه {quickAssignStudent.grade})
+              </div>
+              <div className="text-[11px] text-neutral-500">
+                مدرسه: {quickAssignStudent.school || 'نامشخص'} • معدل: {toPersianDigits(quickAssignStudent.gpa)}
+              </div>
+            </div>
+
+            <Field label="انتخاب مشاور تحصیلی از بانک مشاوران:">
+              <select
+                value={quickAssignCounselorId}
+                onChange={(e) => setQuickAssignCounselorId(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 font-bold text-neutral-800"
+              >
+                <option value="">-- بدون مشاور (حذف تخصیص) --</option>
+                {(state.counselors || []).map((c) => {
+                  const assignedCount = state.students.filter(
+                    (s) => s.counselorId === c.id && s.id !== quickAssignStudent.id
+                  ).length;
+                  const maxCap = c.maxCapacity || 30;
+                  const free = Math.max(0, maxCap - assignedCount);
+                  return (
+                    <option key={c.id} value={c.id}>
+                      مشاور {c.firstName} {c.lastName} ({c.specialty || 'هدایت تحصیلی'}) — ظرفیت خالی: {toPersianDigits(free)} از {toPersianDigits(maxCap)} نفر
+                    </option>
+                  );
+                })}
+              </select>
+            </Field>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-100">
+              <button
+                type="button"
+                onClick={() => setQuickAssignStudent(null)}
+                className="px-4 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-xl font-bold transition-colors"
+              >
+                انصراف
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold transition-all shadow-sm shadow-teal-600/20"
+              >
+                ثبت و اعمال تخصیص
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Bulk Assign Counselor Modal */}
+      {isBulkAssignModalOpen && (
+        <Modal
+          isOpen={isBulkAssignModalOpen}
+          onClose={() => setIsBulkAssignModalOpen(false)}
+          title="تخصیص گروهی دانش‌آموزان به مشاور تحصیلی"
+          maxWidth="lg"
+        >
+          <form onSubmit={handleBulkAssignSubmit} className="space-y-4 text-xs font-medium" dir="rtl">
+            <p className="text-neutral-600 leading-relaxed">
+              مشاور مورد نظر را از بانک مشاوران انتخاب کنید و دانش‌آموزانی را که می‌خواهید به این مشاور هدایت شوند علامت بزنید.
+            </p>
+
+            <Field label="مشاور تحصیلی مقصد:">
+              <select
+                value={bulkAssignTargetCounselorId}
+                onChange={(e) => setBulkAssignTargetCounselorId(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 font-bold text-neutral-800"
+              >
+                <option value="">-- انتخاب مشاور از بانک مشاوران --</option>
+                {(state.counselors || []).map((c) => {
+                  const assignedCount = state.students.filter((s) => s.counselorId === c.id).length;
+                  const maxCap = c.maxCapacity || 30;
+                  const free = Math.max(0, maxCap - assignedCount);
+                  return (
+                    <option key={c.id} value={c.id}>
+                      مشاور {c.firstName} {c.lastName} ({c.specialty || 'هدایت تحصیلی'}) — ظرفیت خالی: {toPersianDigits(free)} از {toPersianDigits(maxCap)} نفر
+                    </option>
+                  );
+                })}
+              </select>
+            </Field>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-neutral-800">
+                  انتخاب دانش‌آموزان ({toPersianDigits(bulkAssignSelectedStudentIds.length)} دانش‌آموز انتخاب‌شده):
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const unassigned = state.students.filter((s) => !s.counselorId).map((s) => s.id);
+                      setBulkAssignSelectedStudentIds(unassigned);
+                    }}
+                    className="text-teal-700 hover:underline"
+                  >
+                    فقط بدون مشاوران
+                  </button>
+                  <span>•</span>
+                  <button
+                    type="button"
+                    onClick={() => setBulkAssignSelectedStudentIds(state.students.map((s) => s.id))}
+                    className="text-neutral-600 hover:underline"
+                  >
+                    انتخاب همه
+                  </button>
+                  <span>•</span>
+                  <button
+                    type="button"
+                    onClick={() => setBulkAssignSelectedStudentIds([])}
+                    className="text-neutral-400 hover:underline"
+                  >
+                    عدم انتخاب
+                  </button>
+                </div>
+              </div>
+
+              <div className="max-h-60 overflow-y-auto border border-neutral-200 rounded-xl divide-y divide-neutral-100 p-1 bg-neutral-50/50">
+                {state.students.map((s) => {
+                  const isChecked = bulkAssignSelectedStudentIds.includes(s.id);
+                  return (
+                    <label
+                      key={s.id}
+                      className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
+                        isChecked ? 'bg-teal-50/80 text-teal-900 font-bold' : 'hover:bg-neutral-100/70 text-neutral-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setBulkAssignSelectedStudentIds((prev) => [...prev, s.id]);
+                            } else {
+                              setBulkAssignSelectedStudentIds((prev) => prev.filter((id) => id !== s.id));
+                            }
+                          }}
+                          className="w-4 h-4 text-teal-600 rounded border-neutral-300 focus:ring-teal-500"
+                        />
+                        <span>{s.firstName} {s.lastName}</span>
+                        <span className="text-[10px] bg-neutral-200 text-neutral-700 px-1.5 py-0.5 rounded">
+                          پایه {s.grade}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-neutral-400 font-normal">
+                        {s.counselorName ? `مشاور فعلی: ${s.counselorName}` : 'بدون مشاور'}
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-100">
+              <button
+                type="button"
+                onClick={() => setIsBulkAssignModalOpen(false)}
+                className="px-4 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-xl font-bold transition-colors"
+              >
+                انصراف
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold transition-all shadow-sm shadow-teal-600/20"
+              >
+                تخصیص به {toPersianDigits(bulkAssignSelectedStudentIds.length)} دانش‌آموز
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
 
       {/* Delete Confirmation */}
       <ConfirmModal

@@ -31,7 +31,7 @@ import {
   IconTrash,
 } from '../icons';
 import { LogoHelli } from '../Logo';
-import { Clock, UserCheck, AlertTriangle, FileText, CheckCircle2 } from 'lucide-react';
+import { Clock, UserCheck, AlertTriangle, FileText, CheckCircle2, HeartHandshake } from 'lucide-react';
 
 interface StudentDossierModalProps {
   registrationId?: string | null;
@@ -87,6 +87,7 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
   const [editGrade, setEditGrade] = useState('');
   const [editSchool, setEditSchool] = useState('');
   const [editGpa, setEditGpa] = useState('');
+  const [editCounselorId, setEditCounselorId] = useState('');
   const [editPhones, setEditPhones] = useState<{ id: string; label: string; number: string }[]>([]);
   const [editErrors, setEditErrors] = useState<Record<string, string>>({});
 
@@ -104,6 +105,7 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
       setEditGrade(student.grade);
       setEditSchool(student.school);
       setEditGpa(String(student.gpa));
+      setEditCounselorId(student.counselorId || '');
       setEditPhones([...student.phones]);
     }
     if (reg) {
@@ -115,6 +117,25 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
   }, [activeRegId, student?.id]);
 
   if (!student) return null;
+
+  // Quick Assign / Change Counselor
+  const handleQuickAssignCounselor = (newCounselorId: string) => {
+    if (!student) return;
+    const selectedCns = (state.counselors || []).find((c) => c.id === newCounselorId);
+    const updatedStudent: Student = {
+      ...student,
+      counselorId: newCounselorId || undefined,
+      counselorName: selectedCns ? `${selectedCns.firstName} ${selectedCns.lastName}` : undefined,
+    };
+    dispatch({ type: 'UPDATE_STUDENT', payload: updatedStudent });
+    setEditCounselorId(newCounselorId);
+    showToast(
+      selectedCns
+        ? `مشاور ${selectedCns.firstName} ${selectedCns.lastName} به این دانش‌آموز اختصاص یافت`
+        : `تخصیص مشاور لغو شد`,
+      'success'
+    );
+  };
 
   // Status Change handlers
   const handleStatusChange = (newStatus: RegistrationStatus) => {
@@ -152,6 +173,8 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
   const handleSaveStudent = (e: React.FormEvent) => {
     e.preventDefault();
 
+    const selectedCns = (state.counselors || []).find((c) => c.id === editCounselorId);
+
     const input = {
       firstName: editFirstName,
       lastName: editLastName,
@@ -161,6 +184,8 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
       gpa: editGpa,
       school: editSchool,
       phones: editPhones.filter((p) => p.number.trim().length > 0),
+      counselorId: editCounselorId || undefined,
+      counselorName: selectedCns ? `${selectedCns.firstName} ${selectedCns.lastName}` : undefined,
     };
 
     const errors = validateStudent(input, fieldSettings, state.students, student.id);
@@ -281,6 +306,16 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
                 {!reg && (
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-neutral-100 text-neutral-600">
                     بدون دوره فعال
+                  </span>
+                )}
+                {student.counselorId ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-50 text-teal-800 border border-teal-200">
+                    <HeartHandshake size={12} className="text-teal-600" />
+                    <span>مشاور: {student.counselorName || 'مشاور تحصیلی'}</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                    بدون مشاور تحصیلی
                   </span>
                 )}
               </div>
@@ -462,7 +497,51 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
                 <span className="text-neutral-400 block text-[11px]">معدل کارنامه قبلی:</span>
                 <span className="font-bold text-neutral-900 mt-0.5 block font-mono">{toPersianDigits(student.gpa)}</span>
               </div>
-              <div className="p-3 bg-neutral-50/70 rounded-2xl">
+              <div className="p-3 bg-teal-50/60 border border-teal-100/80 rounded-2xl flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-teal-800 block text-[11px] font-bold">مشاور تحصیلی اختصاصی:</span>
+                    <HeartHandshake size={14} className="text-teal-600" />
+                  </div>
+                  {student.counselorId ? (
+                    <div className="mt-1">
+                      <span className="font-extrabold text-neutral-900 block text-xs">
+                        مشاور {student.counselorName}
+                      </span>
+                      {(() => {
+                        const cns = (state.counselors || []).find((c) => c.id === student.counselorId);
+                        return cns ? (
+                          <span className="text-[10px] text-teal-700 block mt-0.5">
+                            {cns.specialty || 'هدایت تحصیلی'} {cns.phone ? `• ${toPersianDigits(cns.phone)}` : ''}
+                          </span>
+                        ) : null;
+                      })()}
+                    </div>
+                  ) : (
+                    <span className="font-medium text-amber-700 mt-1 block text-xs">
+                      هنوز مشاوری تخصیص داده نشده
+                    </span>
+                  )}
+                </div>
+                {!isEditingStudent && (
+                  <div className="mt-2 pt-1 border-t border-teal-100/80 flex items-center justify-between gap-1">
+                    <span className="text-[10px] text-neutral-500">تغییر مشاور:</span>
+                    <select
+                      value={student.counselorId || ''}
+                      onChange={(e) => handleQuickAssignCounselor(e.target.value)}
+                      className="text-[11px] bg-white border border-teal-200 rounded-lg px-2 py-1 text-teal-900 font-bold focus:outline-hidden"
+                    >
+                      <option value="">-- بدون مشاور --</option>
+                      {(state.counselors || []).map((c) => (
+                        <option key={c.id} value={c.id}>
+                          مشاور {c.firstName} {c.lastName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+              <div className="p-3 bg-neutral-50/70 rounded-2xl sm:col-span-2 lg:col-span-3">
                 <span className="text-neutral-400 block text-[11px]">شماره‌های تماس ثبت‌شده:</span>
                 <div className="mt-1 space-y-1">
                   {student.phones.map((p) => (
@@ -539,6 +618,22 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
                     className="w-full px-3 py-1.5 text-xs bg-neutral-50 border border-neutral-200 rounded-xl font-mono text-left"
                   />
                 </Field>
+                <div className="sm:col-span-3">
+                  <Field label="مشاور تحصیلی اختصاصی (از بانک مشاوران)">
+                    <select
+                      value={editCounselorId}
+                      onChange={(e) => setEditCounselorId(e.target.value)}
+                      className="w-full px-3 py-1.5 text-xs bg-neutral-50 border border-neutral-200 rounded-xl font-bold text-neutral-800"
+                    >
+                      <option value="">-- بدون مشاور تحصیلی --</option>
+                      {(state.counselors || []).map((c) => (
+                        <option key={c.id} value={c.id}>
+                          مشاور {c.firstName} {c.lastName} ({c.specialty || 'هدایت تحصیلی'})
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
               </div>
 
               {/* Phone Numbers Editor */}

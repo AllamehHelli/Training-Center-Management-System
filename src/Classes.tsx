@@ -26,6 +26,7 @@ export const Classes: React.FC = () => {
   const { showToast } = useToast();
 
   const [gradeFilter, setGradeFilter] = useState<'all' | string>('all');
+  const [teacherFilter, setTeacherFilter] = useState<'all' | string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<ClassRoom | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -33,6 +34,7 @@ export const Classes: React.FC = () => {
   // Form State
   const [formName, setFormName] = useState('');
   const [formGrade, setFormGrade] = useState<StudentGrade>(grades[0] || 'هفتم');
+  const [formTeacherId, setFormTeacherId] = useState<string>('');
   const [formTeacher, setFormTeacher] = useState('');
   const [formTuition, setFormTuition] = useState<number>(12000000);
   const [formSessions, setFormSessions] = useState<ClassSession[]>([]);
@@ -64,6 +66,7 @@ export const Classes: React.FC = () => {
   // Filter classes
   const filteredClasses = state.classes.filter((c) => {
     if (gradeFilter !== 'all' && c.grade !== gradeFilter) return false;
+    if (teacherFilter !== 'all' && c.teacherId !== teacherFilter) return false;
     return true;
   });
 
@@ -73,6 +76,7 @@ export const Classes: React.FC = () => {
       setEditingClass(c);
       setFormName(c.name);
       setFormGrade(c.grade);
+      setFormTeacherId(c.teacherId || '');
       setFormTeacher(c.teacher);
       setFormTuition(c.tuition);
       // ME-2: derive real start/end times by parsing the session `time` string
@@ -267,6 +271,7 @@ export const Classes: React.FC = () => {
         ...editingClass,
         name: formName.trim(),
         grade: formGrade,
+        teacherId: formTeacherId || undefined,
         teacher: formTeacher.trim(),
         tuition: formTuition,
         sessions: normalizedSessions,
@@ -278,6 +283,7 @@ export const Classes: React.FC = () => {
         id: `cls-${Date.now()}`,
         name: formName.trim(),
         grade: formGrade,
+        teacherId: formTeacherId || undefined,
         teacher: formTeacher.trim(),
         tuition: formTuition,
         sessions: normalizedSessions,
@@ -322,37 +328,60 @@ export const Classes: React.FC = () => {
         </div>
       </div>
 
-      {/* Dynamic Grade Filter Tabs */}
-      <div className="flex flex-wrap items-center gap-1 p-1 bg-neutral-100/80 rounded-full w-fit">
-        <button
-          type="button"
-          onClick={() => setGradeFilter('all')}
-          className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
-            gradeFilter === 'all'
-              ? 'bg-white text-neutral-900 font-bold shadow-2xs'
-              : 'text-neutral-500 hover:text-neutral-900'
-          }`}
-        >
-          همه دوره‌ها ({toPersianDigits(state.classes.length)})
-        </button>
-        {grades.map((grade) => {
-          const count = state.classes.filter((c) => c.grade === grade).length;
-          return (
-            <button
-              key={grade}
-              type="button"
-              onClick={() => setGradeFilter(grade)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors flex items-center gap-1.5 ${
-                gradeFilter === grade
-                  ? 'bg-white text-neutral-900 font-bold shadow-2xs'
-                  : 'text-neutral-500 hover:text-neutral-900'
-              }`}
-            >
-              <span>پایه {grade}</span>
-              <span className="text-[10px] opacity-75 font-mono">({toPersianDigits(count)})</span>
-            </button>
-          );
-        })}
+      {/* Filter Bar: Grade Tabs + Teacher Bank Selector */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        {/* Dynamic Grade Filter Tabs */}
+        <div className="flex flex-wrap items-center gap-1 p-1 bg-neutral-100/80 rounded-full w-fit">
+          <button
+            type="button"
+            onClick={() => setGradeFilter('all')}
+            className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+              gradeFilter === 'all'
+                ? 'bg-white text-neutral-900 font-bold shadow-2xs'
+                : 'text-neutral-500 hover:text-neutral-900'
+            }`}
+          >
+            همه دوره‌ها ({toPersianDigits(state.classes.length)})
+          </button>
+          {grades.map((grade) => {
+            const count = state.classes.filter((c) => c.grade === grade).length;
+            return (
+              <button
+                key={grade}
+                type="button"
+                onClick={() => setGradeFilter(grade)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors flex items-center gap-1.5 ${
+                  gradeFilter === grade
+                    ? 'bg-white text-neutral-900 font-bold shadow-2xs'
+                    : 'text-neutral-500 hover:text-neutral-900'
+                }`}
+              >
+                <span>پایه {grade}</span>
+                <span className="text-[10px] opacity-75 font-mono">({toPersianDigits(count)})</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Teacher Bank Filter */}
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-neutral-500 font-medium shrink-0">فیلتر استاد:</label>
+          <select
+            value={teacherFilter}
+            onChange={(e) => setTeacherFilter(e.target.value)}
+            className="px-3 py-1.5 text-xs bg-white border border-neutral-200/80 rounded-full font-bold text-neutral-700 focus:outline-hidden focus:border-indigo-500 shadow-2xs"
+          >
+            <option value="all">همه اساتید (بانک اساتید)</option>
+            {(state.teachers || []).map((t) => {
+              const count = state.classes.filter((c) => c.teacherId === t.id).length;
+              return (
+                <option key={t.id} value={t.id}>
+                  استاد {t.firstName} {t.lastName} ({toPersianDigits(count)} دوره)
+                </option>
+              );
+            })}
+          </select>
+        </div>
       </div>
 
       {/* Class Cards Grid */}
@@ -406,8 +435,18 @@ export const Classes: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="text-xs text-slate-500 mb-3">
-                    مدرس: <strong className="text-slate-700">{cls.teacher}</strong>
+                  <div className="text-xs text-slate-500 mb-3 flex items-center justify-between">
+                    <div>
+                      مدرس: <strong className="text-slate-800">{cls.teacher}</strong>
+                    </div>
+                    {(() => {
+                      const tch = (state.teachers || []).find((t) => t.id === cls.teacherId);
+                      return tch ? (
+                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/60 px-2 py-0.5 rounded-md">
+                          {tch.specialty}
+                        </span>
+                      ) : null;
+                    })()}
                   </div>
 
                   <div className="text-xs font-bold text-[#0A3528] mb-4 pb-3 border-b border-slate-100">
@@ -536,15 +575,42 @@ export const Classes: React.FC = () => {
               </select>
             </Field>
 
-            {/* Teacher */}
-            <Field label="نام مدرس / تیم آموزشی" required>
-              <input
-                type="text"
-                value={formTeacher}
-                onChange={(e) => setFormTeacher(e.target.value)}
-                placeholder="مثلاً: دکتر علیرضا میرزایی"
-                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#0E7C5B] focus:bg-white"
-              />
+            {/* Teacher Selection from Bank or Custom */}
+            <Field label="مدرس دوره آموزشی (بانک اساتید)" required>
+              <div className="space-y-2">
+                <select
+                  value={formTeacherId}
+                  onChange={(e) => {
+                    const selectedId = e.target.value;
+                    setFormTeacherId(selectedId);
+                    if (selectedId && selectedId !== 'custom') {
+                      const t = (state.teachers || []).find((tch) => tch.id === selectedId);
+                      if (t) setFormTeacher(`استاد ${t.firstName} ${t.lastName}`);
+                    } else if (selectedId === 'custom') {
+                      setFormTeacher('');
+                    }
+                  }}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#0E7C5B] focus:bg-white"
+                >
+                  <option value="">-- انتخاب از بانک اساتید ثبت‌شده --</option>
+                  {(state.teachers || []).map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.firstName} {t.lastName} ({t.specialty})
+                    </option>
+                  ))}
+                  <option value="custom">استاد متفرقه یا ورود دستی نام...</option>
+                </select>
+
+                {(!formTeacherId || formTeacherId === 'custom') && (
+                  <input
+                    type="text"
+                    value={formTeacher}
+                    onChange={(e) => setFormTeacher(e.target.value)}
+                    placeholder="نام و عنوان مدرس را وارد کنید (مثال: دکتر علیرضا میرزایی)"
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#0E7C5B] focus:bg-white"
+                  />
+                )}
+              </div>
             </Field>
 
             {/* Tuition */}

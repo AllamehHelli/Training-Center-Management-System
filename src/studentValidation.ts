@@ -27,6 +27,8 @@ export interface StudentFormInput {
   gpa: string | number; // raw input value (string) or existing numeric value
   school: string;
   phones: PhoneNumber[];
+  counselorId?: string;
+  counselorName?: string;
 }
 
 /**
@@ -163,6 +165,8 @@ export function buildStudentFromInput(
     phones: (input.phones || [])
       .filter((p) => p.number.trim().length > 0)
       .map((p) => ({ ...p, number: toEnglishDigits(p.number).trim() })),
+    counselorId: input.counselorId ? input.counselorId.trim() : (base.counselorId || undefined),
+    counselorName: input.counselorName ? input.counselorName.trim() : (base.counselorName || undefined),
   };
 }
 

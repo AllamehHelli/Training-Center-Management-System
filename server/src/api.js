@@ -25,13 +25,15 @@ async function setStateValue(k, v) {
 
 // ---------- GET /api/state — کل وضعیت سمت سرور ----------
 api.get('/state', requirePerm('read'), async (req, res) => {
-  const [years, students, classes, registrations, settingsRows, archivedRows] = await Promise.all([
+  const [years, students, classes, registrations, settingsRows, archivedRows, teachers, counselors] = await Promise.all([
     query('SELECT id,label,status FROM academic_years'),
     query('SELECT * FROM students ORDER BY created_at DESC'),
     query('SELECT * FROM classes ORDER BY created_at ASC'),
     query('SELECT * FROM registrations ORDER BY created_at DESC'),
     query('SELECT k,v FROM settings'),
     query('SELECT year_id,data,archived_at FROM archived_years'),
+    query('SELECT * FROM teachers ORDER BY created_at DESC').catch(() => []),
+    query('SELECT * FROM counselors ORDER BY created_at DESC').catch(() => []),
   ]);
   const settings = {};
   for (const s of settingsRows) settings[s.k] = j(s.v, {});
@@ -45,6 +47,8 @@ api.get('/state', requirePerm('read'), async (req, res) => {
     students: students.map(mapStudent),
     classes: classes.map(mapClass),
     registrations: registrations.map(mapReg),
+    teachers: (teachers || []).map(mapTeacher),
+    counselors: (counselors || []).map(mapCounselor),
     settings,
     archivedData: Object.fromEntries(archivedRows.map((a) => [a.year_id, j(a.data, null)])),
   });
@@ -55,11 +59,27 @@ const mapStudent = (r) => ({
   fatherName: r.father_name, birthDate: r.birth_date, city: r.city, neighborhood: r.neighborhood,
   address: r.address, phones: j(r.phones, []), emails: j(r.emails, []),
   previousSchool: r.previous_school, gpa: r.gpa == null ? undefined : Number(r.gpa),
+  grade: r.grade || 'هفتم', school: r.school || '',
+  counselorId: r.counselor_id || undefined, counselorName: r.counselor_name || undefined,
   fields: j(r.fields, {}), notes: r.notes || '', createdAt: r.created_at, updatedAt: r.updated_at,
 });
 const mapClass = (r) => ({
   id: r.id, name: r.name, grade: r.grade, teacher: r.teacher, capacity: r.capacity,
+  tuition: Number(r.tuition) || 0, teacherId: r.teacher_id || undefined,
   day: r.day, time: r.time, sessions: j(r.sessions, []), createdAt: r.created_at, updatedAt: r.updated_at,
+});
+const mapTeacher = (r) => ({
+  id: r.id, firstName: r.first_name, lastName: r.last_name, nationalId: r.national_id || '',
+  phone: r.phone || '', email: r.email || '', specialty: r.specialty || '', degree: r.degree || '',
+  notes: r.notes || '', isActive: r.is_active === 1 || r.is_active === true,
+  createdAt: r.created_at || '', updatedAt: r.updated_at || '',
+});
+const mapCounselor = (r) => ({
+  id: r.id, firstName: r.first_name, lastName: r.last_name, nationalId: r.national_id || '',
+  phone: r.phone || '', email: r.email || '', specialty: r.specialty || '', grades: j(r.grades, []),
+  maxCapacity: Number(r.max_capacity) || 30, notes: r.notes || '',
+  isActive: r.is_active === 1 || r.is_active === true,
+  createdAt: r.created_at || '', updatedAt: r.updated_at || '',
 });
 const mapReg = (r) => ({
   id: r.id, code: r.code, studentId: r.student_id, classId: r.class_id, sessionId: r.session_id,
@@ -73,11 +93,11 @@ api.post('/students', requirePerm('write'), async (req, res) => {
   const s = req.body;
   try {
     await query(
-      `INSERT INTO students (id,national_id,first_name,last_name,father_name,birth_date,city,neighborhood,address,phones,emails,previous_school,gpa,fields,notes)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [s.id, s.nationalId, s.firstName, s.lastName, s.fatherName || '', s.birthDate || '', s.city || '',
-       s.neighborhood || '', s.address || '', toJ(s.phones || []), toJ(s.emails || []), s.previousSchool || '',
-       s.gpa ?? null, toJ(s.fields || {}), s.notes || '']
+      `INSERT INTO students (id,national_id,first_name,last_name,father_name,birth_date,grade,school,city,neighborhood,address,phones,emails,previous_school,gpa,fields,notes,counselor_id,counselor_name)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [s.id, s.nationalId, s.firstName, s.lastName, s.fatherName || '', s.birthDate || '', s.grade || 'هفتم', s.school || '',
+       s.city || '', s.neighborhood || '', s.address || '', toJ(s.phones || []), toJ(s.emails || []), s.previousSchool || '',
+       s.gpa ?? null, toJ(s.fields || {}), s.notes || '', s.counselorId || null, s.counselorName || null]
     );
     await audit(req, 'ADD_STUDENT', 'student', s.id, { nationalId: mask(s.nationalId) });
     res.json({ ok: true });
@@ -91,10 +111,10 @@ api.put('/students/:id', requirePerm('write'), async (req, res) => {
   const s = { ...req.body, id: req.params.id };
   try {
     await query(
-      `UPDATE students SET national_id=?,first_name=?,last_name=?,father_name=?,birth_date=?,city=?,neighborhood=?,address=?,phones=?,emails=?,previous_school=?,gpa=?,fields=?,notes=? WHERE id=?`,
-      [s.nationalId, s.firstName, s.lastName, s.fatherName || '', s.birthDate || '', s.city || '',
-       s.neighborhood || '', s.address || '', toJ(s.phones || []), toJ(s.emails || []), s.previousSchool || '',
-       s.gpa ?? null, toJ(s.fields || {}), s.notes || '', s.id]
+      `UPDATE students SET national_id=?,first_name=?,last_name=?,father_name=?,birth_date=?,grade=?,school=?,city=?,neighborhood=?,address=?,phones=?,emails=?,previous_school=?,gpa=?,fields=?,notes=?,counselor_id=?,counselor_name=? WHERE id=?`,
+      [s.nationalId, s.firstName, s.lastName, s.fatherName || '', s.birthDate || '', s.grade || 'هفتم', s.school || '',
+       s.city || '', s.neighborhood || '', s.address || '', toJ(s.phones || []), toJ(s.emails || []), s.previousSchool || '',
+       s.gpa ?? null, toJ(s.fields || {}), s.notes || '', s.counselorId || null, s.counselorName || null, s.id]
     );
     await audit(req, 'UPDATE_STUDENT', 'student', s.id, {});
     res.json({ ok: true });
@@ -125,11 +145,11 @@ async function saveClass(s, isNew) {
   }));
   const capacity = sessions.reduce((a, x) => a + (Number(x.capacity) || 0), 0);
   const sql = isNew
-    ? `INSERT INTO classes (id,name,grade,teacher,capacity,day,time,sessions) VALUES (?,?,?,?,?,?,?,?)`
-    : `UPDATE classes SET name=?,grade=?,teacher=?,capacity=?,day=?,time=?,sessions=? WHERE id=?`;
+    ? `INSERT INTO classes (id,name,grade,teacher,capacity,tuition,day,time,sessions,teacher_id) VALUES (?,?,?,?,?,?,?,?,?,?)`
+    : `UPDATE classes SET name=?,grade=?,teacher=?,capacity=?,tuition=?,day=?,time=?,sessions=?,teacher_id=? WHERE id=?`;
   const params = isNew
-    ? [s.id, s.name, s.grade, s.teacher || '', capacity, s.day || '', s.time || '', toJ(sessions)]
-    : [s.name, s.grade, s.teacher || '', capacity, s.day || '', s.time || '', toJ(sessions), s.id];
+    ? [s.id, s.name, s.grade, s.teacher || '', capacity, Number(s.tuition) || 0, s.day || '', s.time || '', toJ(sessions), s.teacherId || null]
+    : [s.name, s.grade, s.teacher || '', capacity, Number(s.tuition) || 0, s.day || '', s.time || '', toJ(sessions), s.teacherId || null, s.id];
   await query(sql, params);
   return sessions;
 }
@@ -146,6 +166,76 @@ api.put('/classes/:id', requirePerm('write'), async (req, res) => {
 api.delete('/classes/:id', requirePerm('write'), async (req, res) => {
   await query('DELETE FROM classes WHERE id=?', [req.params.id]);
   await audit(req, 'DELETE_CLASS', 'class', req.params.id, {});
+  res.json({ ok: true });
+});
+
+// ---------- بانک اساتید ----------
+api.get('/teachers', requirePerm('read'), async (req, res) => {
+  const rows = await query('SELECT * FROM teachers ORDER BY created_at DESC').catch(() => []);
+  res.json(rows.map(mapTeacher));
+});
+api.post('/teachers', requirePerm('write'), async (req, res) => {
+  const t = req.body;
+  const id = t.id || `tch-${Date.now()}`;
+  await query(
+    `INSERT INTO teachers (id,first_name,last_name,national_id,phone,email,specialty,degree,notes,is_active,created_at,updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [id, t.firstName || '', t.lastName || '', t.nationalId || '', t.phone || '', t.email || '',
+     t.specialty || '', t.degree || '', t.notes || '', t.isActive === false ? 0 : 1, t.createdAt || '', t.updatedAt || '']
+  );
+  await audit(req, 'ADD_TEACHER', 'teacher', id, {});
+  res.json({ ok: true, id });
+});
+api.put('/teachers/:id', requirePerm('write'), async (req, res) => {
+  const t = req.body;
+  await query(
+    `UPDATE teachers SET first_name=?,last_name=?,national_id=?,phone=?,email=?,specialty=?,degree=?,notes=?,is_active=?,updated_at=? WHERE id=?`,
+    [t.firstName || '', t.lastName || '', t.nationalId || '', t.phone || '', t.email || '',
+     t.specialty || '', t.degree || '', t.notes || '', t.isActive === false ? 0 : 1, t.updatedAt || '', req.params.id]
+  );
+  await audit(req, 'UPDATE_TEACHER', 'teacher', req.params.id, {});
+  res.json({ ok: true });
+});
+api.delete('/teachers/:id', requirePerm('write'), async (req, res) => {
+  await query('DELETE FROM teachers WHERE id=?', [req.params.id]);
+  await query('UPDATE classes SET teacher_id=NULL WHERE teacher_id=?', [req.params.id]).catch(() => {});
+  await audit(req, 'DELETE_TEACHER', 'teacher', req.params.id, {});
+  res.json({ ok: true });
+});
+
+// ---------- بانک مشاوران ----------
+api.get('/counselors', requirePerm('read'), async (req, res) => {
+  const rows = await query('SELECT * FROM counselors ORDER BY created_at DESC').catch(() => []);
+  res.json(rows.map(mapCounselor));
+});
+api.post('/counselors', requirePerm('write'), async (req, res) => {
+  const cn = req.body;
+  const id = cn.id || `cns-${Date.now()}`;
+  await query(
+    `INSERT INTO counselors (id,first_name,last_name,national_id,phone,email,specialty,grades,max_capacity,notes,is_active,created_at,updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [id, cn.firstName || '', cn.lastName || '', cn.nationalId || '', cn.phone || '', cn.email || '',
+     cn.specialty || '', toJ(cn.grades || []), Number(cn.maxCapacity) || 30, cn.notes || '',
+     cn.isActive === false ? 0 : 1, cn.createdAt || '', cn.updatedAt || '']
+  );
+  await audit(req, 'ADD_COUNSELOR', 'counselor', id, {});
+  res.json({ ok: true, id });
+});
+api.put('/counselors/:id', requirePerm('write'), async (req, res) => {
+  const cn = req.body;
+  await query(
+    `UPDATE counselors SET first_name=?,last_name=?,national_id=?,phone=?,email=?,specialty=?,grades=?,max_capacity=?,notes=?,is_active=?,updated_at=? WHERE id=?`,
+    [cn.firstName || '', cn.lastName || '', cn.nationalId || '', cn.phone || '', cn.email || '',
+     cn.specialty || '', toJ(cn.grades || []), Number(cn.maxCapacity) || 30, cn.notes || '',
+     cn.isActive === false ? 0 : 1, cn.updatedAt || '', req.params.id]
+  );
+  await audit(req, 'UPDATE_COUNSELOR', 'counselor', req.params.id, {});
+  res.json({ ok: true });
+});
+api.delete('/counselors/:id', requirePerm('write'), async (req, res) => {
+  await query('DELETE FROM counselors WHERE id=?', [req.params.id]);
+  await query('UPDATE students SET counselor_id=NULL, counselor_name=NULL WHERE counselor_id=?', [req.params.id]).catch(() => {});
+  await audit(req, 'DELETE_COUNSELOR', 'counselor', req.params.id, {});
   res.json({ ok: true });
 });
 

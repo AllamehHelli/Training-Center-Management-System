@@ -13,6 +13,8 @@ import {
   SyncLogItem,
   AcademicYear,
   AcademicYearDataSnapshot,
+  Teacher,
+  Counselor,
 } from './types';
 import { buildSeedData, migrateLegacyData, maxRegistrationSeq, makeRegistrationCode } from './data';
 import { getTodayJalali, migrateSessionTimes } from './utils';
@@ -106,6 +108,12 @@ export const MUTATING_ACTION_TYPES: ReadonlySet<AppAction['type']> = new Set<App
   'ADD_CLASS',
   'UPDATE_CLASS',
   'DELETE_CLASS',
+  'ADD_TEACHER',
+  'UPDATE_TEACHER',
+  'DELETE_TEACHER',
+  'ADD_COUNSELOR',
+  'UPDATE_COUNSELOR',
+  'DELETE_COUNSELOR',
   'ADD_REGISTRATION',
   'UPDATE_REGISTRATION',
   'UPDATE_REGISTRATION_STATUS',
@@ -151,6 +159,8 @@ export interface AppState {
   students: Student[];
   classes: ClassRoom[];
   registrations: Registration[];
+  teachers: Teacher[];
+  counselors: Counselor[];
   wooSettings: WooSettings;
   /**
    * Global high-water mark for registration tracking codes. It only ever
@@ -169,6 +179,12 @@ export type AppAction =
   | { type: 'ADD_CLASS'; payload: ClassRoom }
   | { type: 'UPDATE_CLASS'; payload: ClassRoom }
   | { type: 'DELETE_CLASS'; payload: string }
+  | { type: 'ADD_TEACHER'; payload: Teacher }
+  | { type: 'UPDATE_TEACHER'; payload: Teacher }
+  | { type: 'DELETE_TEACHER'; payload: string }
+  | { type: 'ADD_COUNSELOR'; payload: Counselor }
+  | { type: 'UPDATE_COUNSELOR'; payload: Counselor }
+  | { type: 'DELETE_COUNSELOR'; payload: string }
   | { type: 'ADD_REGISTRATION'; payload: Registration }
   | { type: 'UPDATE_REGISTRATION_STATUS'; payload: { id: string; status: RegistrationStatus } }
   | { type: 'UPDATE_REGISTRATION'; payload: Registration }
@@ -653,6 +669,52 @@ function appReducer(state: AppState, action: AppAction): AppState {
       };
     }
 
+    case 'ADD_TEACHER':
+      return { ...state, teachers: [action.payload, ...state.teachers] };
+
+    case 'UPDATE_TEACHER': {
+      const updatedTeachers = state.teachers.map((t) =>
+        t.id === action.payload.id ? action.payload : t
+      );
+      const updatedClasses = state.classes.map((c) =>
+        c.teacherId === action.payload.id ? { ...c, teacher: `${action.payload.firstName} ${action.payload.lastName}` } : c
+      );
+      return { ...state, teachers: updatedTeachers, classes: updatedClasses };
+    }
+
+    case 'DELETE_TEACHER':
+      return {
+        ...state,
+        teachers: state.teachers.filter((t) => t.id !== action.payload),
+        classes: state.classes.map((c) =>
+          c.teacherId === action.payload ? { ...c, teacherId: undefined } : c
+        ),
+      };
+
+    case 'ADD_COUNSELOR':
+      return { ...state, counselors: [action.payload, ...state.counselors] };
+
+    case 'UPDATE_COUNSELOR': {
+      const updatedCounselors = state.counselors.map((cn) =>
+        cn.id === action.payload.id ? action.payload : cn
+      );
+      const updatedStudents = state.students.map((s) =>
+        s.counselorId === action.payload.id
+          ? { ...s, counselorName: `${action.payload.firstName} ${action.payload.lastName}` }
+          : s
+      );
+      return { ...state, counselors: updatedCounselors, students: updatedStudents };
+    }
+
+    case 'DELETE_COUNSELOR':
+      return {
+        ...state,
+        counselors: state.counselors.filter((cn) => cn.id !== action.payload),
+        students: state.students.map((s) =>
+          s.counselorId === action.payload ? { ...s, counselorId: undefined, counselorName: undefined } : s
+        ),
+      };
+
     default:
       return state;
   }
@@ -677,6 +739,10 @@ export interface AppContextValue {
   getClassRegistrations: (classId: string) => Registration[];
   getSessionEnrolledCount: (classId: string, sessionId: string) => number;
   getSessionRemainingCapacity: (classId: string, sessionId: string) => number;
+  getTeacherById: (id: string) => Teacher | undefined;
+  getCounselorById: (id: string) => Counselor | undefined;
+  getTeacherClasses: (teacherId: string) => ClassRoom[];
+  getCounselorStudents: (counselorId: string) => Student[];
   /**
    * Global uniqueness fix: preview of the tracking code that WILL be issued by
    * the next ADD_REGISTRATION / accepted Woo order. Display-only — actual
@@ -855,6 +921,8 @@ export const AppProvider: React.FC<{
           students: st.students || [],
           classes: st.classes || [],
           registrations: st.registrations || [],
+          teachers: (st.teachers && Array.isArray(st.teachers)) ? st.teachers : stateRef.current.teachers || [],
+          counselors: (st.counselors && Array.isArray(st.counselors)) ? st.counselors : stateRef.current.counselors || [],
           wooSettings: { ...(stateRef.current.wooSettings || {} as any), ...(st.settings?.wooPublic || {}) },
           nextRegSeq: Number(st.nextRegSeq || 0),
         } as AppState,
@@ -911,6 +979,11 @@ export const AppProvider: React.FC<{
     return Math.max(0, sessionInfo.session.capacity - enrolled);
   };
 
+  const getTeacherById = (id: string) => state.teachers.find((t) => t.id === id);
+  const getCounselorById = (id: string) => state.counselors.find((c) => c.id === id);
+  const getTeacherClasses = (teacherId: string) => state.classes.filter((c) => c.teacherId === teacherId);
+  const getCounselorStudents = (counselorId: string) => state.students.filter((s) => s.counselorId === counselorId);
+
   // Display-only preview of the next tracking code. The authoritative number
   // is allocated inside the reducer at dispatch time (see ADD_REGISTRATION).
   const peekNextRegistrationCode = () => {
@@ -958,6 +1031,10 @@ export const AppProvider: React.FC<{
         getClassRegistrations,
         getSessionEnrolledCount,
         getSessionRemainingCapacity,
+        getTeacherById,
+        getCounselorById,
+        getTeacherClasses,
+        getCounselorStudents,
         peekNextRegistrationCode,
       }}
     >

@@ -29,8 +29,8 @@ async function req<T = unknown>(path: string, init: RequestInit = {}): Promise<T
 
 export interface ServerState {
   academicYears: any[]; activeYearId: string; viewingYearId: string; nextRegSeq: number;
-  students: any[]; classes: any[]; registrations: any[]; settings: Record<string, any>;
-  archivedData: Record<string, any>;
+  students: any[]; classes: any[]; registrations: any[]; teachers?: any[]; counselors?: any[];
+  settings: Record<string, any>; archivedData: Record<string, any>;
 }
 
 export const serverApi = {
@@ -43,6 +43,8 @@ export const serverApi = {
   post: (p: string, b: unknown) => req(p, { method: 'POST', body: JSON.stringify(b) }),
   put: (p: string, b: unknown) => req(p, { method: 'PUT', body: JSON.stringify(b) }),
   del: (p: string) => req(p, { method: 'DELETE' }),
+  teachers: () => req<any[]>('/teachers'),
+  counselors: () => req<any[]>('/counselors'),
   // ووکامرس سمت سرور (CR-4): کلیدها هرگز به مرورگر نمی‌آیند
   wooStatus: () => req<{ configured: boolean; storeUrl: string }>('/woo/status'),
   wooTest: () => req<{ connected: boolean; error?: string }>('/woo/test', { method: 'POST' }),
@@ -67,6 +69,12 @@ export async function syncAction(a: { type: string; payload?: any }): Promise<vo
     case 'ADD_CLASS': return void await serverApi.post('/classes', a.payload);
     case 'UPDATE_CLASS': return void await serverApi.put(`/classes/${a.payload.id}`, a.payload);
     case 'DELETE_CLASS': return void await serverApi.del(`/classes/${a.payload.id ?? a.payload}`);
+    case 'ADD_TEACHER': return void await serverApi.post('/teachers', a.payload);
+    case 'UPDATE_TEACHER': return void await serverApi.put(`/teachers/${a.payload.id}`, a.payload);
+    case 'DELETE_TEACHER': return void await serverApi.del(`/teachers/${a.payload.id ?? a.payload}`);
+    case 'ADD_COUNSELOR': return void await serverApi.post('/counselors', a.payload);
+    case 'UPDATE_COUNSELOR': return void await serverApi.put(`/counselors/${a.payload.id}`, a.payload);
+    case 'DELETE_COUNSELOR': return void await serverApi.del(`/counselors/${a.payload.id ?? a.payload}`);
     case 'ADD_REGISTRATION': return void await serverApi.post('/registrations', a.payload);
     case 'UPDATE_REGISTRATION':
       return void await serverApi.put(`/registrations/${a.payload.id}`, a.payload);
