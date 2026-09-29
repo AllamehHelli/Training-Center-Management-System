@@ -60,18 +60,21 @@ export async function syncAction(a: { type: string; payload?: any }): Promise<vo
   switch (a.type) {
     case 'ADD_STUDENT': return void await serverApi.post('/students', a.payload);
     case 'UPDATE_STUDENT': return void await serverApi.put(`/students/${a.payload.id}`, a.payload);
-    case 'DELETE_STUDENT': return void await serverApi.del(`/students/${a.payload}`);
+    case 'DELETE_STUDENT': return void await serverApi.del(`/students/${a.payload.id ?? a.payload}`);
     case 'BULK_ADD_STUDENTS':
       for (const s of a.payload) await serverApi.post('/students', s);
       return;
     case 'ADD_CLASS': return void await serverApi.post('/classes', a.payload);
     case 'UPDATE_CLASS': return void await serverApi.put(`/classes/${a.payload.id}`, a.payload);
-    case 'DELETE_CLASS': return void await serverApi.del(`/classes/${a.payload.id}`);
+    case 'DELETE_CLASS': return void await serverApi.del(`/classes/${a.payload.id ?? a.payload}`);
     case 'ADD_REGISTRATION': return void await serverApi.post('/registrations', a.payload);
     case 'UPDATE_REGISTRATION':
+      return void await serverApi.put(`/registrations/${a.payload.id}`, a.payload);
     case 'UPDATE_REGISTRATION_STATUS':
-      return void await serverApi.put(`/registrations/${a.payload.id ?? a.payload.registrationId}`, a.payload);
-    case 'DELETE_REGISTRATION': return void await serverApi.del(`/registrations/${a.payload}`);
+      return void await serverApi.put(`/registrations/${a.payload.registrationId ?? a.payload.id}`, {
+        status: a.payload.status,
+      });
+    case 'DELETE_REGISTRATION': return void await serverApi.del(`/registrations/${a.payload.id ?? a.payload}`);
     default: return; // MARK_INSTALLMENT_PAID/REFUND از رویداد اختصاصی زیر استفاده می‌کنند
   }
 }

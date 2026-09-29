@@ -1,3 +1,14 @@
+# مسدودسازی دسترسی به فایل‌های حساس، پیکربندی و سورس
+<FilesMatch "^\.(?!well-known)|\.(sql|md|env|sample\.php|json|lock)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order deny,allow
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
