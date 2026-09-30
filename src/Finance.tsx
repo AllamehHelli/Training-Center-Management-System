@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppStore } from './store';
 import {
   toPersianDigits,
@@ -17,6 +17,7 @@ import {
 import { DateRangePicker, JalaliDateRange } from './DateRangePicker';
 import { ProgressBar, useToast, Avatar, InfoTooltip } from './ui';
 import { PaymentDateModal } from './components/PaymentDateModal';
+import { StudentDossierModal } from './components/StudentDossierModal';
 import {
   IconFinance,
   IconAlert,
@@ -25,6 +26,7 @@ import {
   IconCalendar,
   IconRefresh,
 } from './icons';
+import { FileText, UserCheck, Phone } from 'lucide-react';
 import { PaymentPlanManager } from './PaymentPlanManager';
 
 interface FlatInstallment {
@@ -41,7 +43,18 @@ interface FlatInstallment {
   delayDays: number;
 }
 
-export const Finance: React.FC = () => {
+export interface FinanceProps {
+  initialFilters?: {
+    status?: 'all' | 'overdue' | 'upcoming' | 'paid';
+    q?: string;
+    targetInstId?: string;
+    regId?: string;
+    openStudentId?: string;
+  };
+  onNavigate?: (view: any, filters?: any) => void;
+}
+
+export const Finance: React.FC<FinanceProps> = ({ initialFilters, onNavigate }) => {
   const { state, dispatch, getStudentById, getClassById } = useAppStore();
   const { showToast } = useToast();
 
@@ -50,6 +63,7 @@ export const Finance: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'all' | 'overdue' | 'upcoming' | 'paid'>('all');
   const [dateRange, setDateRange] = useState<JalaliDateRange>({ preset: 'all' });
   const [paymentModalItem, setPaymentModalItem] = useState<FlatInstallment | null>(null);
+  const [selectedDossier, setSelectedDossier] = useState<{ studentId: string; regId?: string } | null>(null);
 
 
   // Flatten all installments across active registrations
@@ -92,6 +106,31 @@ export const Finance: React.FC = () => {
   const remainingCollectible = Math.max(0, totalContractValue - totalCollected);
   const collectionPercentage =
     totalContractValue > 0 ? Math.round((totalCollected / totalContractValue) * 100) : 0;
+
+  // Handle incoming deep-link action from notifications or dashboard
+  useEffect(() => {
+    if (!initialFilters) return;
+    if (initialFilters.status) {
+      setStatusFilter(initialFilters.status);
+    }
+    if (initialFilters.q) {
+      setSearchTerm(initialFilters.q);
+    }
+    if (initialFilters.targetInstId && initialFilters.regId) {
+      const match = allInstallments.find(
+        (i) => i.instId === initialFilters.targetInstId && i.regId === initialFilters.regId
+      );
+      if (match && !match.paidAt) {
+        setPaymentModalItem(match);
+      }
+    }
+    if (initialFilters.openStudentId) {
+      setSelectedDossier({
+        studentId: initialFilters.openStudentId,
+        regId: initialFilters.regId,
+      });
+    }
+  }, [initialFilters]);
 
   // Filter installments
   const filteredInstallments = allInstallments
@@ -512,24 +551,35 @@ export const Finance: React.FC = () => {
                           item.isOverdue ? 'bg-red-50/30' : ''
                         }`}
                       >
-                        {/* Student */}
+                        {/* Student Info (Clickable for Financial & Contact Dossier) */}
                         <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedDossier({ studentId: item.studentId, regId: item.regId })}
+                            className="flex items-center gap-2.5 text-right w-full p-1.5 -m-1.5 rounded-xl transition-all hover:bg-emerald-50/80 group cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-[#0E7C5B]/30"
+                            title="کلیک برای مشاهده و ویرایش پرونده مالی و مشخصات ارتباطی دانش‌آموز"
+                          >
                             <Avatar
                               name={student ? `${student.firstName} ${student.lastName}` : 'د'}
                               size="sm"
                             />
-                            <div>
-                              <div className="font-semibold text-slate-800">
-                                {student ? `${student.firstName} ${student.lastName}` : 'نامشخص'}
+                            <div className="flex-1 min-w-0">
+                              <div className="font-semibold text-slate-800 group-hover:text-[#0E7C5B] transition-colors flex items-center gap-1.5">
+                                <span className="truncate">{student ? `${student.firstName} ${student.lastName}` : 'نامشخص'}</span>
+                                <span className="text-[10px] px-1.5 py-0.2 bg-slate-100 group-hover:bg-emerald-100 group-hover:text-[#0A3528] text-slate-600 rounded font-normal transition-colors shrink-0">
+                                  پرونده مالی
+                                </span>
                               </div>
-                              <div className="text-[10px] text-slate-400">
-                                {student?.phones?.[0]?.number
-                                  ? toPersianDigits(student.phones[0].number)
-                                  : '---'}
+                              <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-2">
+                                <span dir="ltr">
+                                  {student?.phones?.[0]?.number
+                                    ? toPersianDigits(student.phones[0].number)
+                                    : '---'}
+                                </span>
+                                {student?.grade && <span>• پایه {student.grade}</span>}
                               </div>
                             </div>
-                          </div>
+                          </button>
                         </td>
 
                         {/* Course & Reg Code */}
@@ -537,7 +587,7 @@ export const Finance: React.FC = () => {
                           <div className="text-slate-800 font-medium truncate max-w-[160px]">
                             {classRoom?.name || 'کلاس نامشخص'}
                           </div>
-                          <div className="text-[10px] text-slate-400 mt-0.5">
+                          <div className="text-[10px] text-slate-400 mt-0.5 font-mono">
                             کد ثبت‌نام: {item.code}
                           </div>
                         </td>
@@ -571,19 +621,29 @@ export const Finance: React.FC = () => {
                           )}
                         </td>
 
-                        {/* Action: Record Payment / Refund */}
+                        {/* Action: Record Payment / Refund + Open Dossier */}
                         <td className="py-3 px-4 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleTogglePayment(item)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                              item.paidAt
-                                ? 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                                : 'bg-[#0E7C5B] hover:bg-[#0A3528] text-white shadow-xs'
-                            }`}
-                          >
-                            {item.paidAt ? 'عودت پرداخت' : 'ثبت پرداخت'}
-                          </button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleTogglePayment(item)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                                item.paidAt
+                                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                  : 'bg-[#0E7C5B] hover:bg-[#0A3528] text-white shadow-xs'
+                              }`}
+                            >
+                              {item.paidAt ? 'عودت پرداخت' : 'ثبت پرداخت'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedDossier({ studentId: item.studentId, regId: item.regId })}
+                              className="p-1.5 rounded-lg bg-slate-100 hover:bg-emerald-50 hover:text-[#0E7C5B] text-slate-600 transition-colors"
+                              title="مشاهده و ویرایش پرونده مالی و مشخصات ارتباطی فراگیر"
+                            >
+                              <FileText size={15} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -613,6 +673,16 @@ export const Finance: React.FC = () => {
           amount={paymentModalItem.amount}
           dueDate={paymentModalItem.dueDate}
           onConfirm={handleConfirmPayment}
+        />
+      )}
+
+      {/* Financial Dossier & Contact Profile Modal */}
+      {selectedDossier && (
+        <StudentDossierModal
+          studentId={selectedDossier.studentId}
+          registrationId={selectedDossier.regId}
+          onClose={() => setSelectedDossier(null)}
+          onNavigate={onNavigate}
         />
       )}
     </div>

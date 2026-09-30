@@ -41,9 +41,10 @@ import { StudentDossierModal } from './components/StudentDossierModal';
 interface RegistrationsProps {
   /** ME-3: filters carried over from the dashboard "view all" action. */
   initialFilters?: Record<string, string>;
+  onNavigate?: (view: any, filters?: any) => void;
 }
 
-export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters }) => {
+export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters, onNavigate }) => {
   const {
     state,
     dispatch,
@@ -80,6 +81,9 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters }) 
       setStatusFilter(initialFilters.status);
     } else {
       setStatusFilter('all');
+    }
+    if (initialFilters.openDossierRegId) {
+      setSelectedDossierRegId(initialFilters.openDossierRegId);
     }
   }, [initialFilters]);
 
@@ -1336,6 +1340,7 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters }) 
         <StudentDossierModal
           registrationId={selectedDossierRegId}
           onClose={() => setSelectedDossierRegId(null)}
+          onNavigate={onNavigate}
         />
       )}
     </div>

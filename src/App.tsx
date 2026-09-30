@@ -37,6 +37,7 @@ import {
 import { LogoHelli } from './Logo';
 import { CommandPalette } from './components/CommandPalette';
 import { TopBarDateRangeFilter, JalaliDateRange } from './components/TopBarDateRangeFilter';
+import { NotificationCenter } from './components/NotificationCenter';
 
 // Pages
 import { Dashboard } from './Dashboard';
@@ -49,7 +50,7 @@ import { Finance } from './Finance';
 import { Woo } from './Woo';
 import { SettingsPage } from './SettingsPage';
 
-type ViewMode =
+export type ViewMode =
   | 'dashboard'
   | 'registrations'
   | 'students'
@@ -65,11 +66,27 @@ const AppContent: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState<number>(0);
   const [hoveredNavId, setHoveredNavId] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState<JalaliDateRange>({ preset: 'all' });
   // ME-3: filter hand-off from the dashboard table ("view all") to the
   // registrations page.
   const [registrationsFilters, setRegistrationsFilters] = useState<Record<string, string> | undefined>(undefined);
+  const [financeFilters, setFinanceFilters] = useState<any>(undefined);
+  const [studentsFilters, setStudentsFilters] = useState<any>(undefined);
+  const [classesFilters, setClassesFilters] = useState<any>(undefined);
+
+  const navigateTo = (view: ViewMode, clearFilters = true) => {
+    if (clearFilters) {
+      setRegistrationsFilters(undefined);
+      setFinanceFilters(undefined);
+      setStudentsFilters(undefined);
+      setClassesFilters(undefined);
+    }
+    setCurrentView(view);
+    setIsMobileMenuOpen(false);
+  };
 
   const {
     state,
@@ -143,7 +160,7 @@ const AppContent: React.FC = () => {
         <div className="flex flex-col items-center gap-4">
           <button
             type="button"
-            onClick={() => setCurrentView('dashboard')}
+            onClick={() => navigateTo('dashboard')}
             title="موسسه تیزهوشان علامه حلی"
             className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-500/15 via-orange-500/10 to-blue-500/15 border border-purple-200/50 flex items-center justify-center p-1.5 shadow-2xs hover:scale-105 transition-transform"
           >
@@ -160,10 +177,7 @@ const AppContent: React.FC = () => {
                 <div key={item.id} className="relative group">
                   <button
                     type="button"
-                    onClick={() => {
-                      setCurrentView(item.id);
-                      setIsMobileMenuOpen(false);
-                    }}
+                    onClick={() => navigateTo(item.id)}
                     onMouseEnter={() => setHoveredNavId(item.id)}
                     onMouseLeave={() => setHoveredNavId(null)}
                     aria-label={item.label}
@@ -202,7 +216,7 @@ const AppContent: React.FC = () => {
           <div className="relative group">
             <button
               type="button"
-              onClick={() => setCurrentView('settings')}
+              onClick={() => navigateTo('settings')}
               aria-label="اطلاعات سامانه و سال تحصیلی"
               className="p-3 rounded-2xl text-neutral-400 hover:text-neutral-900 hover:bg-neutral-100/90 transition-all flex items-center justify-center"
             >
@@ -264,7 +278,7 @@ const AppContent: React.FC = () => {
             <div className="flex items-center gap-2 text-xs font-medium text-neutral-400">
               <button
                 type="button"
-                onClick={() => setCurrentView('dashboard')}
+                onClick={() => navigateTo('dashboard')}
                 className="hover:text-neutral-800 transition-colors"
               >
                 داشبورد
@@ -312,13 +326,18 @@ const AppContent: React.FC = () => {
             {/* Notification Bell with Badge */}
             <button
               type="button"
-              onClick={() => setCurrentView('registrations')}
-              className="relative w-8 h-8 rounded-full bg-white hover:bg-neutral-50 border border-neutral-200/80 flex items-center justify-center text-neutral-600 transition-colors shadow-2xs"
-              aria-label="اعلان‌ها"
+              onClick={() => setIsNotificationCenterOpen((prev) => !prev)}
+              className={`relative w-8 h-8 rounded-full border flex items-center justify-center transition-colors shadow-2xs ${
+                isNotificationCenterOpen
+                  ? 'bg-neutral-900 text-white border-neutral-900 ring-2 ring-neutral-300'
+                  : 'bg-white hover:bg-neutral-50 text-neutral-600 border-neutral-200/80'
+              }`}
+              aria-label="مرکز رویدادها و اعلان‌ها"
+              title="مرکز رویدادها و اعلان‌ها"
             >
               <Bell size={14} />
-              {pendingCount > 0 && (
-                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#EA580C] ring-2 ring-white" />
+              {(unreadNotificationCount > 0 || pendingCount > 0) && (
+                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#EA580C] ring-2 ring-white animate-pulse" />
               )}
             </button>
 
@@ -392,12 +411,34 @@ const AppContent: React.FC = () => {
                 onDateFilterChange={setDateFilter}
               />
             )}
-            {currentView === 'registrations' && <Registrations initialFilters={registrationsFilters} />}
-            {currentView === 'students' && <Students />}
+            {currentView === 'registrations' && (
+              <Registrations
+                initialFilters={registrationsFilters}
+                onNavigate={(view, filters) => {
+                  if (view === 'registrations') setRegistrationsFilters(filters);
+                  else if (view === 'students') setStudentsFilters(filters);
+                  else if (view === 'classes') setClassesFilters(filters);
+                  else if (view === 'finance') setFinanceFilters(filters);
+                  setCurrentView(view);
+                }}
+              />
+            )}
+            {currentView === 'students' && <Students initialFilters={studentsFilters} />}
             {currentView === 'counselors' && <Counselors />}
-            {currentView === 'classes' && <Classes />}
+            {currentView === 'classes' && <Classes initialFilters={classesFilters} />}
             {currentView === 'teachers' && <Teachers />}
-            {currentView === 'finance' && <Finance />}
+            {currentView === 'finance' && (
+              <Finance
+                initialFilters={financeFilters}
+                onNavigate={(view, filters) => {
+                  if (view === 'registrations') setRegistrationsFilters(filters);
+                  else if (view === 'students') setStudentsFilters(filters);
+                  else if (view === 'classes') setClassesFilters(filters);
+                  else if (view === 'finance') setFinanceFilters(filters);
+                  setCurrentView(view);
+                }}
+              />
+            )}
             {currentView === 'woo' && <Woo />}
             {currentView === 'settings' && <SettingsPage />}
           </div>
@@ -408,7 +449,26 @@ const AppContent: React.FC = () => {
       <CommandPalette
         isOpen={isCommandPaletteOpen}
         onClose={() => setIsCommandPaletteOpen(false)}
-        onNavigate={(view) => setCurrentView(view)}
+        onNavigate={(view) => navigateTo(view)}
+      />
+
+      {/* Live Notification & Activity Center Popover */}
+      <NotificationCenter
+        isOpen={isNotificationCenterOpen}
+        onClose={() => setIsNotificationCenterOpen(false)}
+        onNavigate={(view, filters) => {
+          if (view === 'registrations') {
+            setRegistrationsFilters(filters);
+          } else if (view === 'finance') {
+            setFinanceFilters(filters);
+          } else if (view === 'students') {
+            setStudentsFilters(filters);
+          } else if (view === 'classes') {
+            setClassesFilters(filters);
+          }
+          setCurrentView(view);
+        }}
+        unreadCountChange={(count) => setUnreadNotificationCount(count)}
       />
 
       {/* HI-1: Reset Confirmation Modal — requires typing the exact phrase,

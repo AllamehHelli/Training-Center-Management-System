@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppStore } from './store';
 import { useFieldSettings } from './Settings';
 import { toPersianDigits, formatToman, calculateClassDuration, parseSessionTimeRange, migrateSessionTimes } from './utils';
@@ -20,7 +20,15 @@ import {
   IconCheck,
 } from './icons';
 
-export const Classes: React.FC = () => {
+export interface ClassesProps {
+  initialFilters?: {
+    openClassId?: string;
+    teacherFilter?: string;
+    gradeFilter?: string;
+  };
+}
+
+export const Classes: React.FC<ClassesProps> = ({ initialFilters }) => {
   const { state, dispatch, getSessionEnrolledCount } = useAppStore();
   const { grades } = useFieldSettings();
   const { showToast } = useToast();
@@ -125,6 +133,23 @@ export const Classes: React.FC = () => {
     }
     setIsModalOpen(true);
   };
+
+  // Handle incoming deep-link action from notifications
+  useEffect(() => {
+    if (!initialFilters) return;
+    if (initialFilters.gradeFilter) {
+      setGradeFilter(initialFilters.gradeFilter);
+    }
+    if (initialFilters.teacherFilter) {
+      setTeacherFilter(initialFilters.teacherFilter);
+    }
+    if (initialFilters.openClassId) {
+      const targetClass = state.classes.find((c) => c.id === initialFilters.openClassId);
+      if (targetClass) {
+        openForm(targetClass);
+      }
+    }
+  }, [initialFilters, state.classes]);
 
   const handleAddSession = () => {
     setFormSessions((prev) => [

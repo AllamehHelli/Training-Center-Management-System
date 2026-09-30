@@ -510,6 +510,15 @@ export function daysOverdue(dueDate: string): number {
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 }
 
+// Calculate signed days between two Jalali dates (date2 - date1)
+export function jalaliDaysBetween(date1: string, date2: string): number {
+  if (!date1 || !date2) return 0;
+  const d1 = jalaliToDate(date1);
+  const d2 = jalaliToDate(date2);
+  const diffTime = d2.getTime() - d1.getTime();
+  return Math.round(diffTime / (1000 * 60 * 60 * 24));
+}
+
 // -------------------------------------------------------------
 // Installment Plan Builder
 // -------------------------------------------------------------

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppStore } from './store';
 import { useFieldSettings } from './Settings';
 import {
@@ -39,7 +39,17 @@ import { HeartHandshake, UserCheck, Sparkles, Filter, Users } from 'lucide-react
 import { LogoHelli } from './Logo';
 import { StudentDossierModal } from './components/StudentDossierModal';
 
-export const Students: React.FC = () => {
+export interface StudentsProps {
+  initialFilters?: {
+    counselorFilter?: 'all' | 'unassigned' | string;
+    gradeFilter?: string;
+    q?: string;
+    openStudentId?: string;
+    action?: 'quickAssign' | 'dossier' | 'edit';
+  };
+}
+
+export const Students: React.FC<StudentsProps> = ({ initialFilters }) => {
   const { state, dispatch, getStudentRegistrations, getClassById } = useAppStore();
   const { fieldSettings, grades } = useFieldSettings();
   const { showToast } = useToast();
@@ -48,6 +58,33 @@ export const Students: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [gradeFilter, setGradeFilter] = useState<'all' | string>('all');
   const [counselorFilter, setCounselorFilter] = useState<'all' | 'unassigned' | string>('all');
+
+  // Handle incoming deep-link action from notifications or command palette
+  useEffect(() => {
+    if (!initialFilters) return;
+    if (initialFilters.counselorFilter) {
+      setCounselorFilter(initialFilters.counselorFilter);
+    }
+    if (initialFilters.gradeFilter) {
+      setGradeFilter(initialFilters.gradeFilter);
+    }
+    if (initialFilters.q) {
+      setSearchTerm(initialFilters.q);
+    }
+    if (initialFilters.openStudentId) {
+      const targetStd = state.students.find((s) => s.id === initialFilters.openStudentId);
+      if (targetStd) {
+        if (initialFilters.action === 'quickAssign' || !initialFilters.action) {
+          setQuickAssignStudent(targetStd);
+          setQuickAssignCounselorId(targetStd.counselorId || '');
+        } else if (initialFilters.action === 'dossier') {
+          setDossierStudent(targetStd);
+        } else if (initialFilters.action === 'edit') {
+          openForm(targetStd);
+        }
+      }
+    }
+  }, [initialFilters, state.students]);
 
   // Modals
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
