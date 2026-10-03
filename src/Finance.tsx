@@ -26,7 +26,7 @@ import {
   IconCalendar,
   IconRefresh,
 } from './icons';
-import { FileText, UserCheck, Phone } from 'lucide-react';
+import { FileText, UserCheck, Phone, CreditCard } from 'lucide-react';
 import { PaymentPlanManager } from './PaymentPlanManager';
 
 interface FlatInstallment {
@@ -566,8 +566,8 @@ export const Finance: React.FC<FinanceProps> = ({ initialFilters, onNavigate }) 
                             <div className="flex-1 min-w-0">
                               <div className="font-semibold text-slate-800 group-hover:text-[#0E7C5B] transition-colors flex items-center gap-1.5">
                                 <span className="truncate">{student ? `${student.firstName} ${student.lastName}` : 'نامشخص'}</span>
-                                <span className="text-[10px] px-1.5 py-0.2 bg-slate-100 group-hover:bg-emerald-100 group-hover:text-[#0A3528] text-slate-600 rounded font-normal transition-colors shrink-0">
-                                  پرونده مالی
+                                <span className="text-[10px] px-2 py-0.5 bg-emerald-100/90 text-[#0A3528] rounded-md font-bold transition-colors shrink-0">
+                                  پرونده مالی (اقساط و تسویه)
                                 </span>
                               </div>
                               <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-2">
@@ -638,10 +638,11 @@ export const Finance: React.FC<FinanceProps> = ({ initialFilters, onNavigate }) 
                             <button
                               type="button"
                               onClick={() => setSelectedDossier({ studentId: item.studentId, regId: item.regId })}
-                              className="p-1.5 rounded-lg bg-slate-100 hover:bg-emerald-50 hover:text-[#0E7C5B] text-slate-600 transition-colors"
-                              title="مشاهده و ویرایش پرونده مالی و مشخصات ارتباطی فراگیر"
+                              className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/80 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
+                              title="مشاهده پرونده مالی (اقساط و تسویه)"
                             >
-                              <FileText size={15} />
+                              <CreditCard size={13} />
+                              <span>پرونده مالی (اقساط و تسویه)</span>
                             </button>
                           </div>
                         </td>
@@ -681,6 +682,7 @@ export const Finance: React.FC<FinanceProps> = ({ initialFilters, onNavigate }) 
         <StudentDossierModal
           studentId={selectedDossier.studentId}
           registrationId={selectedDossier.regId}
+          mode="financial"
           onClose={() => setSelectedDossier(null)}
           onNavigate={onNavigate}
         />

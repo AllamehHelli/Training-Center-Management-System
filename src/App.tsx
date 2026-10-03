@@ -27,6 +27,7 @@ import {
   Info,
   LogOut,
   ChevronRight,
+  ChevronLeft,
   AlertTriangle,
   Menu,
   X,
@@ -64,6 +65,25 @@ export type ViewMode =
 const AppContent: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewMode>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('helli_sidebar_expanded');
+      return saved !== null ? JSON.parse(saved) : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const toggleSidebar = () => {
+    setIsSidebarExpanded((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('helli_sidebar_expanded', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
@@ -149,42 +169,128 @@ const AppContent: React.FC = () => {
   return (
     <div className="flex h-screen overflow-hidden bg-[#F4F5F8] text-slate-800 p-2 sm:p-3 lg:p-4 gap-3 lg:gap-4 select-none" dir="rtl">
       {/* ----------------------------------------------------------------- */}
-      {/* Minimal Icon Sidebar (Exact replication of screenshot)            */}
+      {/* Modern Glass Collapsible Sidebar (استایل شیشه‌ای با قابلیت باز و بسته شدن) */}
       {/* ----------------------------------------------------------------- */}
       <aside
-        className={`no-print fixed inset-y-3 right-3 z-40 w-[74px] bg-white/95 backdrop-blur-md rounded-3xl border border-neutral-200/80 shadow-xs flex flex-col items-center justify-between py-5 transition-transform duration-300 md:static md:translate-x-0 ${
-          isMobileMenuOpen ? 'translate-x-0 shadow-2xl' : 'translate-x-[120%] md:translate-x-0'
+        className={`no-print fixed inset-y-3 right-3 z-40 bg-white/80 backdrop-blur-2xl rounded-3xl border border-white/80 shadow-[0_12px_40px_rgba(0,0,0,0.06)] ring-1 ring-slate-900/5 flex flex-col justify-between py-4 transition-all duration-300 ease-in-out md:static ${
+          isSidebarExpanded ? 'w-[250px] px-3' : 'w-[74px] items-center px-2'
+        } ${
+          isMobileMenuOpen ? 'translate-x-0 shadow-2xl w-[260px]' : 'translate-x-[120%] md:translate-x-0'
         }`}
       >
-        {/* Top: Brand Logo Badge */}
-        <div className="flex flex-col items-center gap-4">
-          <button
-            type="button"
-            onClick={() => navigateTo('dashboard')}
-            title="موسسه تیزهوشان علامه حلی"
-            className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-500/15 via-orange-500/10 to-blue-500/15 border border-purple-200/50 flex items-center justify-center p-1.5 shadow-2xs hover:scale-105 transition-transform"
-          >
-            <LogoHelli size={32} />
-          </button>
+        {/* Top: Logo, Titles & Toggle Button */}
+        <div className="flex flex-col gap-3 w-full">
+          {isSidebarExpanded ? (
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200/60 px-1">
+              <div className="flex items-center gap-2.5 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => navigateTo('dashboard')}
+                  title="موسسه تیزهوشان علامه حلی"
+                  className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-500/15 via-orange-500/10 to-blue-500/15 border border-purple-200/50 flex items-center justify-center p-1 shadow-2xs hover:scale-105 transition-transform shrink-0 cursor-pointer"
+                >
+                  <LogoHelli size={28} />
+                </button>
+                <div className="min-w-0">
+                  <h1 className="font-heading font-extrabold text-xs text-[#162E6E] truncate">
+                    علامه حلی
+                  </h1>
+                  <p className="text-[10px] text-slate-400 truncate">
+                    سامانه هوشمند مدیریت
+                  </p>
+                </div>
+              </div>
 
-          {/* Navigation Icons Stack */}
-          <nav className="flex flex-col items-center gap-2 mt-2">
+              {/* Collapse Toggle Button (Desktop) */}
+              <button
+                type="button"
+                onClick={toggleSidebar}
+                className="hidden md:flex p-1.5 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100/80 transition-all cursor-pointer"
+                title="جمع کردن سایدبار"
+              >
+                <ChevronRight size={18} />
+              </button>
+
+              {/* Mobile Close Button */}
+              <button
+                type="button"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="md:hidden p-1.5 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-2 pb-3 border-b border-slate-200/60">
+              <button
+                type="button"
+                onClick={() => navigateTo('dashboard')}
+                title="موسسه تیزهوشان علامه حلی"
+                className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-purple-500/15 via-orange-500/10 to-blue-500/15 border border-purple-200/50 flex items-center justify-center p-1 shadow-2xs hover:scale-105 transition-transform cursor-pointer"
+              >
+                <LogoHelli size={30} />
+              </button>
+
+              {/* Expand Toggle Button (Desktop) */}
+              <button
+                type="button"
+                onClick={toggleSidebar}
+                className="hidden md:flex items-center justify-center w-8 h-8 rounded-xl bg-slate-100/90 hover:bg-[#162E6E] text-slate-500 hover:text-white transition-all shadow-2xs cursor-pointer group"
+                title="باز کردن منو و مشاهده عنوان‌ها"
+              >
+                <ChevronLeft size={16} />
+              </button>
+            </div>
+          )}
+
+          {/* Navigation Items Stack */}
+          <nav className="flex flex-col gap-1.5 overflow-y-auto max-h-[calc(100vh-210px)] py-1 no-scrollbar">
             {navItems.map((item) => {
               const isActive = currentView === item.id;
               const Icon = item.icon;
 
+              if (isSidebarExpanded) {
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => navigateTo(item.id)}
+                    className={`flex items-center justify-between w-full px-3 py-2.5 rounded-2xl text-xs font-semibold transition-all duration-200 cursor-pointer ${
+                      isActive
+                        ? 'bg-[#162E6E] text-white shadow-md shadow-[#162E6E]/20 scale-[1.01]'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Icon
+                        size={18}
+                        className={isActive ? 'text-white' : 'text-slate-500'}
+                        strokeWidth={isActive ? 2.2 : 1.8}
+                      />
+                      <span className="truncate">{item.label}</span>
+                    </div>
+
+                    {item.id === 'registrations' && pendingCount > 0 && (
+                      <span className="px-2 py-0.5 bg-[#EA580C] text-white rounded-full text-[10px] font-mono shrink-0 shadow-2xs font-bold">
+                        {toPersianDigits(pendingCount)}
+                      </span>
+                    )}
+                  </button>
+                );
+              }
+
               return (
-                <div key={item.id} className="relative group">
+                <div key={item.id} className="relative group flex justify-center">
                   <button
                     type="button"
                     onClick={() => navigateTo(item.id)}
                     onMouseEnter={() => setHoveredNavId(item.id)}
                     onMouseLeave={() => setHoveredNavId(null)}
                     aria-label={item.label}
-                    className={`relative p-3 rounded-2xl transition-all duration-200 flex items-center justify-center ${
+                    className={`relative p-3 rounded-2xl transition-all duration-200 flex items-center justify-center cursor-pointer ${
                       isActive
-                        ? 'bg-neutral-900 text-white shadow-md scale-105'
-                        : 'text-neutral-400 hover:text-neutral-900 hover:bg-neutral-100/90'
+                        ? 'bg-[#162E6E] text-white shadow-md shadow-[#162E6E]/25 scale-105'
+                        : 'text-slate-400 hover:text-slate-900 hover:bg-white/90'
                     }`}
                   >
                     <Icon size={20} strokeWidth={isActive ? 2.2 : 1.8} />
@@ -195,8 +301,8 @@ const AppContent: React.FC = () => {
                     )}
                   </button>
 
-                  {/* Clean Hover Tooltip */}
-                  <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 px-3 py-1.5 bg-neutral-900 text-white text-xs font-medium rounded-xl whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-150 shadow-lg z-50 flex items-center gap-2">
+                  {/* Clean Hover Tooltip in collapsed mode */}
+                  <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 px-3 py-1.5 bg-slate-900 text-white text-xs font-medium rounded-xl whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-150 shadow-lg z-50 flex items-center gap-2">
                     <span>{item.label}</span>
                     {item.id === 'registrations' && pendingCount > 0 && (
                       <span className="px-1.5 py-0.2 bg-[#EA580C] text-white rounded-md text-[10px] font-mono">
@@ -210,40 +316,66 @@ const AppContent: React.FC = () => {
           </nav>
         </div>
 
-        {/* Bottom Icons: Info & Reset */}
-        <div className="flex flex-col items-center gap-2">
-          {/* Info Button */}
-          <div className="relative group">
-            <button
-              type="button"
-              onClick={() => navigateTo('settings')}
-              aria-label="اطلاعات سامانه و سال تحصیلی"
-              className="p-3 rounded-2xl text-neutral-400 hover:text-neutral-900 hover:bg-neutral-100/90 transition-all flex items-center justify-center"
-            >
-              <Info size={19} strokeWidth={1.8} />
-            </button>
-            <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 px-3 py-1.5 bg-neutral-900 text-white text-xs font-medium rounded-xl whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-150 shadow-lg z-50">
-              راهنما و سال تحصیلی ({viewingAcademicYear?.shortTitle || '۱۴۰۳-۱۴۰۴'})
-            </div>
-          </div>
-
-          {/* HI-1: Reset Demo Data Button — hidden entirely in operational
-              builds; only available when demo tools are enabled (DEV mode or
-              VITE_ENABLE_DEMO_TOOLS=true). Even then it requires typing a
-              confirmation phrase and downloads an automatic backup first. */}
-          {DEMO_TOOLS_ENABLED && (
-            <div className="relative group">
+        {/* Bottom Icons & Year Status */}
+        <div className="flex flex-col gap-2 pt-2 border-t border-slate-200/50">
+          {isSidebarExpanded ? (
+            <div className="space-y-1.5">
               <button
                 type="button"
-                onClick={() => setIsResetConfirmOpen(true)}
-                aria-label="بازنشانی داده‌های نمونه اولیه"
-                className="p-3 rounded-2xl text-neutral-400 hover:text-rose-600 hover:bg-rose-50 transition-all flex items-center justify-center"
+                onClick={() => navigateTo('settings')}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-white/80 transition-colors text-xs font-medium cursor-pointer"
               >
-                <RotateCcw size={19} strokeWidth={1.8} />
+                <div className="flex items-center gap-2">
+                  <Info size={16} className="text-slate-400" />
+                  <span className="truncate">سال تحصیلی</span>
+                </div>
+                <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded-lg text-slate-700 font-mono font-bold">
+                  {viewingAcademicYear?.shortTitle || '۱۴۰۳-۱۴۰۴'}
+                </span>
               </button>
-              <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 px-3 py-1.5 bg-neutral-900 text-white text-xs font-medium rounded-xl whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-150 shadow-lg z-50">
-                بازنشانی داده‌های آزمایشی
+
+              {DEMO_TOOLS_ENABLED && (
+                <button
+                  type="button"
+                  onClick={() => setIsResetConfirmOpen(true)}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-slate-400 hover:text-rose-600 hover:bg-rose-50/60 rounded-xl transition-colors cursor-pointer"
+                >
+                  <RotateCcw size={14} />
+                  <span>بازنشانی داده‌ها</span>
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-2">
+              <div className="relative group">
+                <button
+                  type="button"
+                  onClick={() => navigateTo('settings')}
+                  aria-label="اطلاعات سامانه و سال تحصیلی"
+                  className="p-2.5 rounded-2xl text-slate-400 hover:text-slate-900 hover:bg-white/90 transition-all flex items-center justify-center cursor-pointer"
+                >
+                  <Info size={18} strokeWidth={1.8} />
+                </button>
+                <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 px-3 py-1.5 bg-slate-900 text-white text-xs font-medium rounded-xl whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-150 shadow-lg z-50">
+                  سال تحصیلی ({viewingAcademicYear?.shortTitle || '۱۴۰۳-۱۴۰۴'})
+                </div>
               </div>
+
+              {DEMO_TOOLS_ENABLED && (
+                <div className="relative group">
+                  <button
+                    type="button"
+                    onClick={() => setIsResetConfirmOpen(true)}
+                    aria-label="بازنشانی داده‌های نمونه اولیه"
+                    className="p-2.5 rounded-2xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all flex items-center justify-center cursor-pointer"
+                  >
+                    <RotateCcw size={18} strokeWidth={1.8} />
+                  </button>
+                  <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 px-3 py-1.5 bg-slate-900 text-white text-xs font-medium rounded-xl whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-150 shadow-lg z-50">
+                    بازنشانی داده‌های آزمایشی
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

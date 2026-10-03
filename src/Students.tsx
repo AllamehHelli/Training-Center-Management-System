@@ -35,7 +35,7 @@ import {
   IconAlert,
   IconClose,
 } from './icons';
-import { HeartHandshake, UserCheck, Sparkles, Filter, Users } from 'lucide-react';
+import { HeartHandshake, UserCheck, Sparkles, Filter, Users, GraduationCap, CreditCard } from 'lucide-react';
 import { LogoHelli } from './Logo';
 import { StudentDossierModal } from './components/StudentDossierModal';
 
@@ -90,6 +90,7 @@ export const Students: React.FC<StudentsProps> = ({ initialFilters }) => {
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [dossierStudent, setDossierStudent] = useState<Student | null>(null);
+  const [dossierInitialMode, setDossierInitialMode] = useState<'educational' | 'financial'>('educational');
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
@@ -583,11 +584,15 @@ export const Students: React.FC<StudentsProps> = ({ initialFilters }) => {
                       <td className="py-3 px-4">
                         <div
                           className="flex items-center gap-2.5 cursor-pointer group"
-                          onClick={() => setDossierStudent(std)}
+                          onClick={() => {
+                            setDossierStudent(std);
+                            setDossierInitialMode('educational');
+                          }}
+                          title="مشاهده پرونده آموزشی دانش‌آموز"
                         >
                           <Avatar name={`${std.firstName} ${std.lastName}`} size="sm" />
                           <div>
-                            <div className="font-semibold text-slate-800 group-hover:text-[#0E7C5B] transition-colors">
+                            <div className="font-semibold text-slate-800 group-hover:text-[#162E6E] transition-colors">
                               {std.firstName} {std.lastName}
                             </div>
                             <div className="text-[10px] text-slate-400 font-mono mt-0.5">
@@ -668,27 +673,43 @@ export const Students: React.FC<StudentsProps> = ({ initialFilters }) => {
 
                       {/* Actions */}
                       <td className="py-3 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1">
+                        <div className="flex items-center justify-center gap-1.5">
                           <button
                             type="button"
-                            onClick={() => setDossierStudent(std)}
-                            className="px-2.5 py-1 bg-neutral-100 hover:bg-neutral-900 hover:text-white text-neutral-800 rounded-lg text-xs font-semibold transition-colors"
-                            title="مشاهده پرونده کامل، ویرایش، ثبت‌نام و مدیریت اقساط بدون تغییر صفحه"
+                            onClick={() => {
+                              setDossierStudent(std);
+                              setDossierInitialMode('educational');
+                            }}
+                            className="px-2.5 py-1 bg-[#162E6E] hover:bg-[#0f204d] text-white rounded-lg text-xs font-bold transition-all shadow-2xs flex items-center gap-1 cursor-pointer"
+                            title="مشاهده اطلاعات هویتی و آموزشی دانش‌آموز در یک نگاه"
                           >
-                            مشاهده کامل پرونده
+                            <GraduationCap size={13} />
+                            <span>پرونده آموزشی</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDossierStudent(std);
+                              setDossierInitialMode('financial');
+                            }}
+                            className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/80 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                            title="مشاهده پرونده مالی، اقساط، تسویه و معوقات"
+                          >
+                            <CreditCard size={13} />
+                            <span>پرونده مالی (اقساط و تسویه)</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => openForm(std)}
-                            className="p-1.5 text-slate-500 hover:text-[#0E7C5B] hover:bg-slate-100 rounded-lg transition-colors"
-                            title="ویرایش"
+                            className="p-1.5 text-slate-500 hover:text-[#162E6E] hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                            title="ویرایش مشخصات"
                           >
                             <IconEdit size={15} />
                           </button>
                           <button
                             type="button"
                             onClick={() => setDeleteConfirmId(std.id)}
-                            className="p-1.5 text-slate-400 hover:text-[#D64545] hover:bg-red-50 rounded-lg transition-colors"
+                            className="p-1.5 text-slate-400 hover:text-[#D64545] hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
                             title="حذف پرونده"
                           >
                             <IconTrash size={15} />
@@ -954,11 +975,12 @@ export const Students: React.FC<StudentsProps> = ({ initialFilters }) => {
       </Modal>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Modal: Student Dossier (پرونده کامل با امکان ویرایش، اقساط و تأیید) */}
+      {/* Modal: Student Dossier (پرونده هویتی و آموزشی فراگیر در یک نگاه)    */}
       {/* ------------------------------------------------------------------ */}
       {dossierStudent && (
         <StudentDossierModal
           studentId={dossierStudent.id}
+          mode={dossierInitialMode}
           onClose={() => setDossierStudent(null)}
         />
       )}

@@ -37,6 +37,7 @@ import { LogoHelli } from './Logo';
 import { JalaliDatePicker } from './JalaliDatePicker';
 import { PaymentDateModal } from './components/PaymentDateModal';
 import { StudentDossierModal } from './components/StudentDossierModal';
+import { GraduationCap } from 'lucide-react';
 
 interface RegistrationsProps {
   /** ME-3: filters carried over from the dashboard "view all" action. */
@@ -668,14 +669,15 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters, on
                             </button>
                           )}
 
-                          {/* Full Dossier Modal */}
+                          {/* Educational Dossier Modal */}
                           <button
                             type="button"
                             onClick={() => setSelectedDossierRegId(reg.id)}
-                            className="p-1.5 text-slate-500 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors"
-                            title="مشاهده پرونده کامل، ویرایش و مدیریت اقساط"
+                            className="px-2 py-1 bg-[#162E6E]/10 hover:bg-[#162E6E] text-[#162E6E] hover:text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                            title="مشاهده پرونده آموزشی دانش‌آموز"
                           >
-                            <IconArrowUpRight size={16} />
+                            <GraduationCap size={13} />
+                            <span>پرونده آموزشی</span>
                           </button>
                         </div>
                       </td>
