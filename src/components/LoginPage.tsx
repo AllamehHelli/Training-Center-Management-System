@@ -2,11 +2,11 @@
 import React, { useState } from 'react';
 import { serverApi, setToken } from '../api';
 import { LogoHelli } from '../Logo';
-import { KeyRound, User, Eye, EyeOff, ShieldCheck, HelpCircle, ArrowLeft } from 'lucide-react';
+import { KeyRound, User, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 
 export const LoginPage: React.FC<{ onDone: () => void }> = ({ onDone }) => {
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('admin123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -38,12 +38,6 @@ export const LoginPage: React.FC<{ onDone: () => void }> = ({ onDone }) => {
     }
   };
 
-  const handleFillDefault = () => {
-    setUsername('admin');
-    setPassword('admin123');
-    setErr('');
-  };
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 via-neutral-50 to-slate-200 p-4 select-none" dir="rtl">
       <div className="w-full max-w-md bg-white/95 backdrop-blur-md rounded-3xl shadow-xl border border-slate-200/90 overflow-hidden">
@@ -62,31 +56,6 @@ export const LoginPage: React.FC<{ onDone: () => void }> = ({ onDone }) => {
 
         {/* Form Container */}
         <form onSubmit={submit} className="p-6 space-y-4">
-          {/* Default Credentials Helper Card */}
-          <div className="p-3.5 bg-blue-50/80 border border-blue-200/80 rounded-2xl text-xs space-y-2">
-            <div className="flex items-center gap-1.5 text-blue-900 font-bold">
-              <ShieldCheck size={16} className="text-blue-600 shrink-0" />
-              <span>اطلاعات ورود پیش‌فرض مدیر سامانه:</span>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
-              <div className="bg-white/80 p-2 rounded-xl border border-blue-100">
-                <span className="text-slate-500 block text-[10px]">نام کاربری:</span>
-                <code className="font-mono font-bold text-blue-950 text-xs">admin</code>
-              </div>
-              <div className="bg-white/80 p-2 rounded-xl border border-blue-100">
-                <span className="text-slate-500 block text-[10px]">رمز عبور:</span>
-                <code className="font-mono font-bold text-blue-950 text-xs">admin123</code>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={handleFillDefault}
-              className="w-full text-center text-[11px] text-blue-700 hover:text-blue-900 font-semibold pt-0.5 hover:underline cursor-pointer"
-            >
-              کلیک برای تکمیل خودکار اطلاعات پیش‌فرض
-            </button>
-          </div>
-
           {/* Username Field */}
           <div className="space-y-1">
             <label className="block text-xs font-semibold text-slate-700">
@@ -103,7 +72,7 @@ export const LoginPage: React.FC<{ onDone: () => void }> = ({ onDone }) => {
                 autoComplete="username"
                 required
                 autoFocus
-                placeholder="admin"
+                placeholder="نام کاربری خود را وارد کنید"
                 className="w-full pr-9 pl-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:border-[#162E6E] focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all font-mono"
               />
             </div>
