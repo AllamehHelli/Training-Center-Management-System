@@ -803,6 +803,7 @@ export const AppProvider: React.FC<{
   // Keep a live ref to the current state so the guarded dispatch can read
   // viewingYearId/activeYearId without re-creating on every render.
   const stateRef = useRef(state);
+  const hasAutoSeededRef = useRef(false);
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
@@ -958,10 +959,17 @@ export const AppProvider: React.FC<{
         finalTeachers = five.teachers;
         finalCounselors = five.counselors;
 
-        // ذخیره نمونه‌ها در دیتابیس در صورت لزوم
-        void serverApi.seedSamples().catch((err: any) => {
-          logger.warn('SYNC', `ثبت اولیه نمونه‌ها روی دیتابیس با تاخیر مواجه شد: ${err?.message || ''}`);
-        });
+        // ذخیره نمونه‌ها در دیتابیس در صورت لزوم (حداکثر یک‌بار در نشست برای پیشگیری از لوپ)
+        if (!hasAutoSeededRef.current) {
+          hasAutoSeededRef.current = true;
+          void serverApi.seedSamples()
+            .then(() => {
+              logger.info('SYNC', '۵ داده نمونه استاندارد با موفقیت در پایگاه داده سرور ثبت شد.');
+            })
+            .catch((err: any) => {
+              logger.warn('SYNC', `ثبت اولیه نمونه‌ها روی دیتابیس با تاخیر مواجه شد: ${err?.message || ''}`);
+            });
+        }
       }
 
       rawDispatch({

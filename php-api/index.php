@@ -182,13 +182,22 @@ function setAppStateValue($pdo, $k, $v) {
 }
 
 function ensureColumn($pdo, $table, $column, $definition) {
+    if (!$pdo) return;
     try {
-        $check = $pdo->prepare("SHOW COLUMNS FROM `$table` LIKE ?");
-        $check->execute([$column]);
-        if ($check->rowCount() === 0) {
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) FROM information_schema.COLUMNS 
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?
+        ");
+        $stmt->execute([$table, $column]);
+        $exists = (int)$stmt->fetchColumn() > 0;
+        if (!$exists) {
             $pdo->exec("ALTER TABLE `$table` ADD `$column` $definition");
         }
-    } catch (Exception $e) { /* ignore */ }
+    } catch (\Throwable $e) {
+        try {
+            $pdo->exec("ALTER TABLE `$table` ADD `$column` $definition");
+        } catch (\Throwable $ex) { /* already exists or ignored */ }
+    }
 }
 
 function ensureDatabaseSchema($pdo, $adminPass) {
@@ -247,6 +256,8 @@ function ensureDatabaseSchema($pdo, $adminPass) {
           previous_school VARCHAR(128) NOT NULL DEFAULT '',
           fields JSON NULL,
           notes TEXT NULL,
+          counselor_id VARCHAR(64) NULL,
+          counselor_name VARCHAR(128) NULL,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           UNIQUE KEY uq_students_nid (national_id)
@@ -259,6 +270,7 @@ function ensureDatabaseSchema($pdo, $adminPass) {
           teacher VARCHAR(128) NOT NULL DEFAULT '',
           capacity INT NOT NULL DEFAULT 0,
           tuition BIGINT NOT NULL DEFAULT 0,
+          teacher_id VARCHAR(64) NULL,
           day VARCHAR(32) NOT NULL DEFAULT '',
           time VARCHAR(32) NOT NULL DEFAULT '',
           sessions JSON NULL,
@@ -388,9 +400,25 @@ function ensureDatabaseSchema($pdo, $adminPass) {
  * شامل ۵ مدرس، ۳ مشاور، ۵ کلاس با زنگ‌های مشخص، ۵ دانش‌آموز، ۵ پرونده ثبت‌نام و دفترچه اقساط
  */
 function seedFiveSampleData($pdo) {
-    if (!$pdo) return false;
+    if (!$pdo) return ['ok' => false, 'error' => 'پایگاه داده در دسترس نیست'];
     try {
-        // ۱. مدرسین نمونه
+        // ۱. اطمینان از وجود ستون‌های مورد نیاز
+        ensureColumn($pdo, 'classes', 'teacher_id', "VARCHAR(64) NULL");
+        ensureColumn($pdo, 'students', 'counselor_id', "VARCHAR(64) NULL");
+        ensureColumn($pdo, 'students', 'counselor_name', "VARCHAR(128) NULL");
+        ensureColumn($pdo, 'students', 'grade', "VARCHAR(32) NOT NULL DEFAULT 'هفتم'");
+        ensureColumn($pdo, 'students', 'school', "VARCHAR(128) NOT NULL DEFAULT ''");
+        ensureColumn($pdo, 'classes', 'tuition', "BIGINT NOT NULL DEFAULT 0");
+        ensureColumn($pdo, 'registrations', 'plan', "JSON NULL");
+        ensureColumn($pdo, 'registrations', 'amount', "BIGINT NOT NULL DEFAULT 0");
+        ensureColumn($pdo, 'registrations', 'discount', "INT NOT NULL DEFAULT 0");
+        ensureColumn($pdo, 'registrations', 'reg_date', "VARCHAR(10) NOT NULL DEFAULT ''");
+
+        // ۲. اطمینان از وجود سال تحصیلی پیش‌فرض در دیتابیس
+        $pdo->prepare("INSERT IGNORE INTO academic_years (id, title, short_title, period_label, start_date, end_date, status) VALUES (?, ?, ?, ?, ?, ?, 'active')")
+            ->execute(['1404-1405', 'سال تحصیلی ۱۴۰۴-۱۴۰۵', '۱۴۰۴-۱۴۰۵', 'مهر ۱۴۰۴ تا شهریور ۱۴۰۵', '1404/07/01', '1405/06/31']);
+
+        // ۳. مدرسین نمونه
         $teachers = [
             ['tch-1', 'علیرضا', 'میرزایی', '0012345678', '09121110001', 'dr.mirzaei@helli.ir', 'ریاضی و هندسه تیزهوشان', 'دکتری ریاضی کاربردی دانشگاه صنعتی شریف', 'مدرس باسابقه المپیاد ریاضی با بیش از ۱۵ سال سابقه'],
             ['tch-2', 'آرش', 'معتمدی', '0023456789', '09122220002', 'motamedi@helli.ir', 'فیزیک پیشرفته و المپیاد', 'کارشناسی ارشد فیزیک ذرات دانشگاه تهران', 'سرگروه فیزیک تیزهوشان و طراح آزمون‌های آزمایشی کشوری'],
@@ -398,23 +426,31 @@ function seedFiveSampleData($pdo) {
             ['tch-4', 'نیما', 'بهرامی', '0045678901', '09124440004', 'bahrami@helli.ir', 'شیمی و زیست‌شناسی المپیاد', 'دکتری بیوشیمی دانشگاه تهران', 'مدرس دوره‌های آمادگی المپیاد'],
             ['tch-5', 'امیرحسام', 'حسینی', '0056789012', '09125550005', 'a.hosseini@helli.ir', 'ترکیبیات و هوش المپیاد ریاضی', 'کارشناسی علوم کامپیوتر دانشگاه شریف', 'مدال طلای المپیاد کشوری ریاضی']
         ];
-        $tStmt = $pdo->prepare("INSERT IGNORE INTO teachers (id, first_name, last_name, national_id, phone, email, specialty, degree, notes, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, '1404/01/15')");
-        foreach ($teachers as $t) {
-            $tStmt->execute($t);
+        try {
+            $tStmt = $pdo->prepare("INSERT IGNORE INTO teachers (id, first_name, last_name, national_id, phone, email, specialty, degree, notes, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, '1404/01/15')");
+            foreach ($teachers as $t) {
+                $tStmt->execute($t);
+            }
+        } catch (\Throwable $te) {
+            error_log("Seed teachers error: " . $te->getMessage());
         }
 
-        // ۲. مشاورین نمونه
+        // ۴. مشاورین نمونه
         $counselors = [
             ['cns-1', 'فرهاد', 'سلیمانی', '0067890123', '09126660001', 'soleimani@helli.ir', 'برنامه‌ریزی جامع تیزهوشان و هدایت تحصیلی', json_encode(['هفتم', 'هشتم', 'نهم'], JSON_UNESCAPED_UNICODE), 35, 'دکتری روانشناسی تربیتی و مشاور ارشد موسسه'],
             ['cns-2', 'مریم', 'کاظمی', '0078901234', '09127770002', 'kazemi@helli.ir', 'مشاوره پایه ششم و آزمون ورودی هفتم', json_encode(['ششم', 'هفتم'], JSON_UNESCAPED_UNICODE), 30, 'کارشناسی ارشد مشاوره تحصیلی'],
             ['cns-3', 'بهنام', 'احمدی', '0089012345', '09128880003', 'ahmadi@helli.ir', 'مشاوره تخصصی مسیر المپیاد و نخبگان', json_encode(['هشتم', 'نهم'], JSON_UNESCAPED_UNICODE), 25, 'مشاور انگیزشی و تخصصی دانش‌پژوهان المپیاد']
         ];
-        $cStmt = $pdo->prepare("INSERT IGNORE INTO counselors (id, first_name, last_name, national_id, phone, email, specialty, grades, max_capacity, notes, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, '1404/01/10')");
-        foreach ($counselors as $c) {
-            $cStmt->execute($c);
+        try {
+            $cStmt = $pdo->prepare("INSERT IGNORE INTO counselors (id, first_name, last_name, national_id, phone, email, specialty, grades, max_capacity, notes, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, '1404/01/10')");
+            foreach ($counselors as $c) {
+                $cStmt->execute($c);
+            }
+        } catch (\Throwable $ce) {
+            error_log("Seed counselors error: " . $ce->getMessage());
         }
 
-        // ۳. کلاس‌های نمونه با زنگ‌های مشخص
+        // ۵. کلاس‌های نمونه با زنگ‌های مشخص
         $classes = [
             [
                 'cls-1', 'هوش تحلیلی و استعداد تحلیلی نهم', 'نهم', 'دکتر علیرضا میرزایی', 50, 14500000, 'شنبه، دوشنبه، چهارشنبه', '۱۶:۰۰ الی ۱۷:۳۰',
@@ -456,12 +492,16 @@ function seedFiveSampleData($pdo) {
                 'tch-5'
             ]
         ];
-        $clStmt = $pdo->prepare("INSERT IGNORE INTO classes (id, name, grade, teacher, capacity, tuition, day, time, sessions, teacher_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        foreach ($classes as $cl) {
-            $clStmt->execute($cl);
+        try {
+            $clStmt = $pdo->prepare("INSERT IGNORE INTO classes (id, name, grade, teacher, capacity, tuition, day, time, sessions, teacher_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            foreach ($classes as $cl) {
+                $clStmt->execute($cl);
+            }
+        } catch (\Throwable $cle) {
+            error_log("Seed classes error: " . $cle->getMessage());
         }
 
-        // ۴. پنج دانش‌آموز نمونه
+        // ۶. پنج دانش‌آموز نمونه
         $students = [
             ['std-1', '0021345678', 'آرتین', 'حسینی', 'محمدرضا', '1388/04/12', 'نهم', 19.95, 'مدرسه شهید بهشتی', 'تهران', 'منطقه ۳', 'خیابان شریعتی، بالاتر از میرداماد', json_encode([['id' => 'p1-1', 'label' => 'پدر', 'number' => '09121112233'], ['id' => 'p1-2', 'label' => 'مادر', 'number' => '09124445566']], JSON_UNESCAPED_UNICODE), 'cns-1', 'فرهاد سلیمانی'],
             ['std-2', '0019876543', 'سارینا', 'صادقی', 'علیرضا', '1388/08/20', 'نهم', 20.00, 'فرزانگان ۱', 'تهران', 'منطقه ۶', 'بلوار کشاورز، خیابان فلسطین', json_encode([['id' => 'p2-1', 'label' => 'مادر', 'number' => '09123334455'], ['id' => 'p2-2', 'label' => 'منزل', 'number' => '09127778899']], JSON_UNESCAPED_UNICODE), 'cns-1', 'فرهاد سلیمانی'],
@@ -469,12 +509,16 @@ function seedFiveSampleData($pdo) {
             ['std-4', '0045678902', 'رزا', 'رادپور', 'کامران', '1389/06/10', 'هشتم', 19.85, 'فرزانگان ۲', 'تهران', 'منطقه ۱', 'تجریش، خیابان فناخسرو', json_encode([['id' => 'p4-1', 'label' => 'مادر', 'number' => '09198765432'], ['id' => 'p4-2', 'label' => 'دانش‌آموز', 'number' => '09301239876']], JSON_UNESCAPED_UNICODE), 'cns-1', 'فرهاد سلیمانی'],
             ['std-5', '0056789013', 'پارسا', 'کریمی', 'جواد', '1390/01/25', 'هفتم', 19.90, 'علامه حلی ۳', 'تهران', 'منطقه ۴', 'تهرانپارس، فلکه دوم', json_encode([['id' => 'p5-1', 'label' => 'پدر', 'number' => '09128889900']], JSON_UNESCAPED_UNICODE), 'cns-2', 'مریم کاظمی']
         ];
-        $stStmt = $pdo->prepare("INSERT IGNORE INTO students (id, national_id, first_name, last_name, father_name, birth_date, grade, gpa, school, city, neighborhood, address, phones, counselor_id, counselor_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        foreach ($students as $st) {
-            $stStmt->execute($st);
+        try {
+            $stStmt = $pdo->prepare("INSERT IGNORE INTO students (id, national_id, first_name, last_name, father_name, birth_date, grade, gpa, school, city, neighborhood, address, phones, counselor_id, counselor_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            foreach ($students as $st) {
+                $stStmt->execute($st);
+            }
+        } catch (\Throwable $ste) {
+            error_log("Seed students error: " . $ste->getMessage());
         }
 
-        // ۵. پنج ثبت‌نام نمونه همراه با برنامه‌های مالی و اقساط
+        // ۷. پنج ثبت‌نام نمونه همراه با برنامه‌های مالی و اقساط
         $registrations = [
             [
                 'reg-1', 'T-1404-0101', 'std-1', 'cls-1', 'ses-1-even', 'approved', 14500000, 500000,
@@ -539,17 +583,23 @@ function seedFiveSampleData($pdo) {
                 '1404/06/20', 'تخفیف ثبت‌نام دو قلوها', '1404-1405'
             ]
         ];
-        $rStmt = $pdo->prepare("INSERT IGNORE INTO registrations (id, code, student_id, class_id, session_id, status, amount, discount, plan, reg_date, notes, year_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        foreach ($registrations as $r) {
-            $rStmt->execute($r);
+        try {
+            $rStmt = $pdo->prepare("INSERT IGNORE INTO registrations (id, code, student_id, class_id, session_id, status, amount, discount, plan, reg_date, notes, year_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            foreach ($registrations as $r) {
+                $rStmt->execute($r);
+            }
+        } catch (\Throwable $re) {
+            error_log("Seed registrations error: " . $re->getMessage());
         }
 
         setAppStateValue($pdo, 'nextRegSeq', 105);
+        setAppStateValue($pdo, 'activeYearId', '1404-1405');
+        setAppStateValue($pdo, 'viewingYearId', '1404-1405');
         logAudit($pdo, null, 'SEED_SAMPLE_DATA', 'system', '5_records', ['count' => 5]);
-        return true;
-    } catch (Exception $e) {
-        error_log("Seed sample data error: " . $e->getMessage());
-        return false;
+        return ['ok' => true, 'count' => 5];
+    } catch (\Throwable $e) {
+        error_log("Seed sample data fatal error: " . $e->getMessage());
+        return ['ok' => false, 'error' => $e->getMessage()];
     }
 }
 
@@ -1175,10 +1225,21 @@ if (preg_match('#^/students/([^/]+)$#', $uri, $m)) {
         }
     } elseif ($method === 'DELETE') {
         requirePerm($user, 'write');
-        $stmt = $pdo->prepare("DELETE FROM students WHERE id = ?");
-        $stmt->execute([$id]);
-        logAudit($pdo, $user['uid'], 'DELETE_STUDENT', 'student', $id);
-        jsonResp(['ok' => true]);
+        try {
+            // ۱. بررسی وابستگی ثبت‌نام‌های فعال پیش از حذف دانش‌آموز
+            $regStmt = $pdo->prepare("SELECT COUNT(*) FROM registrations WHERE student_id = ?");
+            $regStmt->execute([$id]);
+            if ((int)$regStmt->fetchColumn() > 0) {
+                jsonResp(['error' => 'student-has-registrations', 'message' => 'این دانش‌آموز دارای سوابق ثبت‌نام فعال در سامانه است. ابتدا ثبت‌نام‌های وی را تعیین تکلیف یا حذف فرمایید.'], 409);
+            }
+            $stmt = $pdo->prepare("DELETE FROM students WHERE id = ?");
+            $stmt->execute([$id]);
+            logAudit($pdo, $user['uid'], 'DELETE_STUDENT', 'student', $id);
+            jsonResp(['ok' => true]);
+        } catch (\Throwable $e) {
+            error_log("Delete student error: " . $e->getMessage());
+            jsonResp(['error' => 'delete-failed', 'message' => 'حذف پرونده دانش‌آموز با خطا مواجه شد: ' . $e->getMessage()], 500);
+        }
     }
 }
 
@@ -1253,10 +1314,19 @@ if (preg_match('#^/classes/([^/]+)$#', $uri, $m)) {
         jsonResp(['ok' => true, 'sessions' => $sessions]);
     } elseif ($method === 'DELETE') {
         requirePerm($user, 'write');
-        $stmt = $pdo->prepare("DELETE FROM classes WHERE id = ?");
-        $stmt->execute([$id]);
-        logAudit($pdo, $user['uid'], 'DELETE_CLASS', 'class', $id);
-        jsonResp(['ok' => true]);
+        try {
+            // صفر کردن ارجاع کلاس در ثبت‌نام‌ها به‌صورت امن
+            try {
+                $pdo->prepare("UPDATE registrations SET class_id = NULL, session_id = NULL WHERE class_id = ?")->execute([$id]);
+            } catch (\Throwable $re) { /* non-fatal */ }
+            $stmt = $pdo->prepare("DELETE FROM classes WHERE id = ?");
+            $stmt->execute([$id]);
+            logAudit($pdo, $user['uid'], 'DELETE_CLASS', 'class', $id);
+            jsonResp(['ok' => true]);
+        } catch (\Throwable $e) {
+            error_log("Delete class error: " . $e->getMessage());
+            jsonResp(['error' => 'delete-failed', 'message' => 'حذف کلاس با خطا مواجه شد: ' . $e->getMessage()], 500);
+        }
     }
 }
 
@@ -1325,12 +1395,21 @@ if (preg_match('#^/teachers/([^/]+)$#', $uri, $m)) {
         jsonResp(['ok' => true]);
     } elseif ($method === 'DELETE') {
         requirePerm($user, 'write');
-        $stmt = $pdo->prepare("DELETE FROM teachers WHERE id = ?");
-        $stmt->execute([$id]);
-        // حذف وابستگی از کلاس‌ها
-        $pdo->prepare("UPDATE classes SET teacher_id = NULL WHERE teacher_id = ?")->execute([$id]);
-        logAudit($pdo, $user['uid'], 'DELETE_TEACHER', 'teacher', $id);
-        jsonResp(['ok' => true]);
+        try {
+            // حذف یا صفر کردن ارجاع کلاس‌ها به‌صورت کاملاً امن
+            try {
+                $pdo->prepare("UPDATE classes SET teacher_id = NULL WHERE teacher_id = ?")->execute([$id]);
+            } catch (\Throwable $te) {
+                // در صورت عدم وجود ستون teacher_id در دیتابیس‌های قدیمی
+            }
+            $stmt = $pdo->prepare("DELETE FROM teachers WHERE id = ?");
+            $stmt->execute([$id]);
+            logAudit($pdo, $user['uid'], 'DELETE_TEACHER', 'teacher', $id);
+            jsonResp(['ok' => true]);
+        } catch (\Throwable $e) {
+            error_log("Delete teacher error: " . $e->getMessage());
+            jsonResp(['error' => 'delete-failed', 'message' => 'حذف مدرس با خطا مواجه شد: ' . $e->getMessage()], 500);
+        }
     }
 }
 
@@ -1401,12 +1480,20 @@ if (preg_match('#^/counselors/([^/]+)$#', $uri, $m)) {
         jsonResp(['ok' => true]);
     } elseif ($method === 'DELETE') {
         requirePerm($user, 'write');
-        $stmt = $pdo->prepare("DELETE FROM counselors WHERE id = ?");
-        $stmt->execute([$id]);
-        // حذف وابستگی از دانش‌آموزان
-        $pdo->prepare("UPDATE students SET counselor_id = NULL, counselor_name = NULL WHERE counselor_id = ?")->execute([$id]);
-        logAudit($pdo, $user['uid'], 'DELETE_COUNSELOR', 'counselor', $id);
-        jsonResp(['ok' => true]);
+        try {
+            try {
+                $pdo->prepare("UPDATE students SET counselor_id = NULL, counselor_name = NULL WHERE counselor_id = ?")->execute([$id]);
+            } catch (\Throwable $ce) {
+                // در صورت عدم وجود ستون در جدول دانش‌آموزان
+            }
+            $stmt = $pdo->prepare("DELETE FROM counselors WHERE id = ?");
+            $stmt->execute([$id]);
+            logAudit($pdo, $user['uid'], 'DELETE_COUNSELOR', 'counselor', $id);
+            jsonResp(['ok' => true]);
+        } catch (\Throwable $e) {
+            error_log("Delete counselor error: " . $e->getMessage());
+            jsonResp(['error' => 'delete-failed', 'message' => 'حذف مشاور با خطا مواجه شد: ' . $e->getMessage()], 500);
+        }
     }
 }
 
@@ -1525,25 +1612,29 @@ if (preg_match('#^/registrations/([^/]+)$#', $uri, $m)) {
         jsonResp(['ok' => true]);
     } elseif ($method === 'DELETE') {
         requirePerm($user, 'write');
+        try {
+            $checkStmt = $pdo->prepare("SELECT year_id, class_id FROM registrations WHERE id = ?");
+            $checkStmt->execute([$id]);
+            $existing = $checkStmt->fetch();
 
-        $checkStmt = $pdo->prepare("SELECT year_id, class_id FROM registrations WHERE id = ?");
-        $checkStmt->execute([$id]);
-        $existing = $checkStmt->fetch();
-
-        if ($existing) {
-            $yStmt = $pdo->prepare("SELECT status FROM academic_years WHERE id = ?");
-            $yStmt->execute([$existing['year_id']]);
-            $yRow = $yStmt->fetch();
-            if ($yRow && $yRow['status'] === 'archived') {
-                jsonResp(['error' => 'archived-year-read-only', 'message' => 'این سال تحصیلی بایگانی شده و فقط‌خواندنی است.'], 423);
+            if ($existing) {
+                $yStmt = $pdo->prepare("SELECT status FROM academic_years WHERE id = ?");
+                $yStmt->execute([$existing['year_id']]);
+                $yRow = $yStmt->fetch();
+                if ($yRow && $yRow['status'] === 'archived') {
+                    jsonResp(['error' => 'archived-year-read-only', 'message' => 'این سال تحصیلی بایگانی شده و فقط‌خواندنی است.'], 423);
+                }
             }
-        }
 
-        $stmt = $pdo->prepare("DELETE FROM registrations WHERE id = ?");
-        $stmt->execute([$id]);
-        if (!empty($existing['class_id'])) bumpEnrolledCounts($pdo, $existing['class_id']);
-        logAudit($pdo, $user['uid'], 'DELETE_REGISTRATION', 'registration', $id);
-        jsonResp(['ok' => true]);
+            $stmt = $pdo->prepare("DELETE FROM registrations WHERE id = ?");
+            $stmt->execute([$id]);
+            if (!empty($existing['class_id'])) bumpEnrolledCounts($pdo, $existing['class_id']);
+            logAudit($pdo, $user['uid'], 'DELETE_REGISTRATION', 'registration', $id);
+            jsonResp(['ok' => true]);
+        } catch (\Throwable $e) {
+            error_log("Delete registration error: " . $e->getMessage());
+            jsonResp(['error' => 'delete-failed', 'message' => 'حذف ثبت‌نام با خطا مواجه شد: ' . $e->getMessage()], 500);
+        }
     }
 }
 
@@ -1816,9 +1907,9 @@ if ($uri === '/woo/products') {
 // -------------------------------------------------------------
 if ($uri === '/seed-samples' && $method === 'POST') {
     requirePerm($user, 'write');
-    $ok = seedFiveSampleData($pdo);
-    if (!$ok) {
-        jsonResp(['error' => 'seed-failed', 'message' => 'بارگذاری داده‌های نمونه در دیتابیس با خطا مواجه شد.'], 500);
+    $res = seedFiveSampleData($pdo);
+    if (!($res['ok'] ?? false)) {
+        jsonResp(['error' => 'seed-failed', 'message' => 'بارگذاری داده‌های نمونه در دیتابیس با خطا مواجه شد: ' . ($res['error'] ?? 'خطای ناشناخته')], 500);
     }
     logAudit($pdo, $user['uid'], 'RESTORE_SAMPLE_DATA', 'system', '5_samples');
     jsonResp(['ok' => true, 'message' => '۵ داده نمونه استاندارد با موفقیت در پایگاه داده بارگذاری شدند.']);
