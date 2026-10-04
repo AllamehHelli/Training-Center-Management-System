@@ -1,5 +1,5 @@
 # مسدودسازی دسترسی به فایل‌های حساس، پیکربندی و سورس
-<FilesMatch "^\.(?!well-known)|\.(sql|md|env|sample\.php|json|lock)$">
+<FilesMatch "^\.(?!well-known)|\.(sql|md|env|sample\.php|lock)$">
   <IfModule mod_authz_core.c>
     Require all denied
   </IfModule>
@@ -20,6 +20,11 @@
   # اگر درخواست به مسیر api ارسال شده، به api/index.php هدایت شود
   RewriteCond %{REQUEST_URI} ^/api(/.*)?$ [NC]
   RewriteRule ^api(/.*)?$ api/index.php [QSA,L]
+
+  # جلوگیری از بازنویسی فایل‌های استاتیک و فونت‌های گمشده به index.html
+  RewriteCond %{REQUEST_URI} \.(ttf|woff|woff2|eot|otf|svg|png|jpg|jpeg|gif|ico|webp)$ [NC]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^ - [R=404,L]
 
   # مسیرهای React SPA: فایل‌ها و پوشه‌های واقعی مستقیماً سرو شوند
   RewriteRule ^index\.html$ - [L]
