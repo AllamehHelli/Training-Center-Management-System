@@ -16,11 +16,12 @@ import {
   Teacher,
   Counselor,
 } from './types';
-import { buildSeedData, migrateLegacyData, maxRegistrationSeq, makeRegistrationCode } from './data';
+import { buildSeedData, migrateLegacyData, maxRegistrationSeq, makeRegistrationCode, getFiveStandardSampleData } from './data';
 import { getTodayJalali, migrateSessionTimes } from './utils';
 import { ToastType, ToastItem, getGlobalToast } from './ui';
 import { IconAlert, IconCheck, IconClose } from './icons';
 import { BACKEND_ENABLED, serverApi, syncAction, getToken } from './api';
+import { logger } from './logger';
 
 const STORAGE_KEY = 'helli_institute_data_v2';
 
@@ -120,6 +121,7 @@ export const MUTATING_ACTION_TYPES: ReadonlySet<AppAction['type']> = new Set<App
   'DELETE_REGISTRATION',
   'MARK_INSTALLMENT_PAID',
   'REFUND_INSTALLMENT',
+  'RESTORE_FIVE_SAMPLES',
   // CR-3: WooCommerce order sync creates students/registrations too, so it
   // must be blocked while an archived year is being viewed.
   'SYNC_WOO_ORDERS',
@@ -216,6 +218,7 @@ export type AppAction =
   | { type: 'UPDATE_ACADEMIC_YEAR'; payload: Partial<AcademicYear> & { id: string } }
   | { type: 'ADD_ACADEMIC_YEAR'; payload: AcademicYear }
   | { type: 'DELETE_ACADEMIC_YEAR'; payload: string }
+  | { type: 'RESTORE_FIVE_SAMPLES' }
   // Server truth replaces the local optimistic copy after login/refresh.
   | { type: 'HYDRATE_FROM_SERVER'; payload: AppState };
 
@@ -526,6 +529,19 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'RESET_DATA':
       return buildSeedData();
+
+    case 'RESTORE_FIVE_SAMPLES': {
+      const five = getFiveStandardSampleData();
+      return {
+        ...state,
+        students: five.students,
+        classes: five.classes,
+        registrations: five.registrations,
+        teachers: five.teachers,
+        counselors: five.counselors,
+        nextRegSeq: Math.max(state.nextRegSeq || 0, 105),
+      };
+    }
 
     case 'SET_VIEWING_YEAR': {
       const targetYearId = action.payload;
@@ -858,6 +874,12 @@ export const AppProvider: React.FC<{
         })().catch((e: Error) => notify(`خطا در بایگانی/شروع سال سمت سرور: ${e.message}`, 'error'));
         return;
       }
+      if (action.type === 'RESTORE_FIVE_SAMPLES') {
+        void serverApi.seedSamples()
+          .then(() => logger.info('SYNC', '۵ داده نمونه استاندارد با موفقیت در دیتابیس سرور بارگذاری شد.'))
+          .catch((e: Error) => logger.warn('SYNC', `ذخیره نمونه‌ها روی سرور: ${e.message}`));
+        return;
+      }
       // Installment pay/refund have installment-scoped REST routes; mirror
       // them through the custom event consumed by the listener below.
       if (action.type === 'MARK_INSTALLMENT_PAID' || action.type === 'REFUND_INSTALLMENT') {
@@ -873,11 +895,12 @@ export const AppProvider: React.FC<{
       }
       void syncAction(action as { type: string; payload?: any }).catch((e: Error & { status?: number }) => {
         console.error('backend sync failed:', action.type, e);
+        logger.error('SYNC', `شکست همگام‌سازی ${action.type}: ${e.message}`, { action, error: e }, { status: e.status });
         notify(
           e.status === 409 ? 'ثبت تکراری رد شد. صفحه را بازخوانی کنید.'
           : e.status === 423 ? 'این سال تحصیلی بایگانی شده و فقط‌خواندنی است.'
           : e.status === 401 ? 'جلسه تمام شده است؛ دوباره وارد شوید.'
-          : e.status === 403 ? (e.message || 'دسترسی غیرمجاز: نقش حساب کاربری شما اجازه این تغییر را ندارد.')
+          : e.status === 403 ? (e.message || 'دسترسی غیرمجاز (۴۰۳): نقش حساب کاربری شما اجازه ذخیره در سرور را ندارد.')
           : `خطا در ذخیره‌سازی سمت سرور: ${e.message}`,
           'error'
         );
@@ -894,6 +917,7 @@ export const AppProvider: React.FC<{
       const d = (ev as CustomEvent).detail as { regId: string; instId: string; kind: 'pay' | 'refund'; paidDate?: string };
       const path = `/registrations/${d.regId}/installments/${d.instId}/${d.kind === 'pay' ? 'pay' : 'refund'}`;
       void serverApi.post(path, { paidDate: d.paidDate || '' }).catch((e: Error & { status?: number }) => {
+        logger.error('SYNC', `خطای ثبت پرداخت سمت سرور: ${e.message}`, { path, error: e }, { status: e.status, url: path });
         notify(e.status === 423 ? 'این سال بایگانی‌شده و فقط‌خواندنی است.' : `خطا در ثبت پرداخت سمت سرور: ${e.message}`, 'error');
       });
     };
@@ -913,19 +937,46 @@ export const AppProvider: React.FC<{
         ...y,
         archivedData: st.archivedData?.[y.id] ?? y.archivedData ?? null,
       }));
+
+      const incomingStudents = Array.isArray(st.students) ? st.students : [];
+      const incomingClasses = Array.isArray(st.classes) ? st.classes : [];
+      const incomingRegs = Array.isArray(st.registrations) ? st.registrations : [];
+
+      const isServerEmpty = incomingStudents.length === 0 && incomingClasses.length === 0 && incomingRegs.length === 0;
+      let finalStudents = incomingStudents;
+      let finalClasses = incomingClasses;
+      let finalRegs = incomingRegs;
+      let finalTeachers = (st.teachers && Array.isArray(st.teachers) && st.teachers.length > 0) ? st.teachers : stateRef.current.teachers || [];
+      let finalCounselors = (st.counselors && Array.isArray(st.counselors) && st.counselors.length > 0) ? st.counselors : stateRef.current.counselors || [];
+
+      if (isServerEmpty) {
+        logger.info('SYSTEM', 'پایگاه داده سرور خالی بود؛ ۵ داده نمونه استاندارد برای بررسی عملکرد سیستم بارگذاری شد.');
+        const five = getFiveStandardSampleData();
+        finalStudents = five.students;
+        finalClasses = five.classes;
+        finalRegs = five.registrations;
+        finalTeachers = five.teachers;
+        finalCounselors = five.counselors;
+
+        // ذخیره نمونه‌ها در دیتابیس در صورت لزوم
+        void serverApi.seedSamples().catch((err: any) => {
+          logger.warn('SYNC', `ثبت اولیه نمونه‌ها روی دیتابیس با تاخیر مواجه شد: ${err?.message || ''}`);
+        });
+      }
+
       rawDispatch({
         type: 'HYDRATE_FROM_SERVER',
         payload: {
           academicYears: yearsWithArchive,
           activeYearId: st.activeYearId || '',
           viewingYearId: st.viewingYearId || st.activeYearId || '',
-          students: st.students || [],
-          classes: st.classes || [],
-          registrations: st.registrations || [],
-          teachers: (st.teachers && Array.isArray(st.teachers)) ? st.teachers : stateRef.current.teachers || [],
-          counselors: (st.counselors && Array.isArray(st.counselors)) ? st.counselors : stateRef.current.counselors || [],
+          students: finalStudents,
+          classes: finalClasses,
+          registrations: finalRegs,
+          teachers: finalTeachers,
+          counselors: finalCounselors,
           wooSettings: { ...(stateRef.current.wooSettings || {} as any), ...(st.settings?.wooPublic || {}) },
-          nextRegSeq: Number(st.nextRegSeq || 0),
+          nextRegSeq: Math.max(Number(st.nextRegSeq || 0), isServerEmpty ? 105 : 0),
         } as AppState,
       });
     };

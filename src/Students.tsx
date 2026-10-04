@@ -35,7 +35,7 @@ import {
   IconAlert,
   IconClose,
 } from './icons';
-import { HeartHandshake, UserCheck, Sparkles, Filter, Users, GraduationCap, CreditCard } from 'lucide-react';
+import { HeartHandshake, UserCheck, Sparkles, Filter, Users, GraduationCap, CreditCard, PlusCircle } from 'lucide-react';
 import { LogoHelli } from './Logo';
 import { StudentDossierModal } from './components/StudentDossierModal';
 
@@ -572,7 +572,26 @@ export const Students: React.FC<StudentsProps> = ({ initialFilters }) => {
               {filteredStudents.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-400">
-                    هیچ دانش‌آموزی با این مشخصات یافت نشد.
+                    <div className="flex flex-col items-center justify-center gap-3">
+                      <p className="text-xs">
+                        {state.students.length === 0
+                          ? 'هیچ پرونده دانش‌آموزی در سامانه موجود نیست.'
+                          : 'هیچ دانش‌آموزی با این مشخصات یافت نشد.'}
+                      </p>
+                      {state.students.length === 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            dispatch({ type: 'RESTORE_FIVE_SAMPLES' });
+                            showToast('۵ داده نمونه استاندارد با موفقیت بارگذاری شدند.', 'success');
+                          }}
+                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <PlusCircle size={14} />
+                          <span>بارگذاری ۵ داده نمونه جهت بررسی عملکرد</span>
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ) : (

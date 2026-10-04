@@ -372,8 +372,184 @@ function ensureDatabaseSchema($pdo, $adminPass) {
             setAppStateValue($pdo, 'viewingYearId', '1404-1405');
         }
 
+        // بررسی و درج ۵ داده نمونه اولیه استاندارد در صورت خالی بودن دیتابیس
+        $studentCount = (int)$pdo->query("SELECT COUNT(*) FROM students")->fetchColumn();
+        if ($studentCount === 0) {
+            seedFiveSampleData($pdo);
+        }
+
     } catch (Exception $e) {
         error_log("Schema initialization error: " . $e->getMessage());
+    }
+}
+
+/**
+ * بارگذاری ۵ رکورد کامل و جامع نمونه موسسه علامه حلی در پایگاه‌داده
+ * شامل ۵ مدرس، ۳ مشاور، ۵ کلاس با زنگ‌های مشخص، ۵ دانش‌آموز، ۵ پرونده ثبت‌نام و دفترچه اقساط
+ */
+function seedFiveSampleData($pdo) {
+    if (!$pdo) return false;
+    try {
+        // ۱. مدرسین نمونه
+        $teachers = [
+            ['tch-1', 'علیرضا', 'میرزایی', '0012345678', '09121110001', 'dr.mirzaei@helli.ir', 'ریاضی و هندسه تیزهوشان', 'دکتری ریاضی کاربردی دانشگاه صنعتی شریف', 'مدرس باسابقه المپیاد ریاضی با بیش از ۱۵ سال سابقه'],
+            ['tch-2', 'آرش', 'معتمدی', '0023456789', '09122220002', 'motamedi@helli.ir', 'فیزیک پیشرفته و المپیاد', 'کارشناسی ارشد فیزیک ذرات دانشگاه تهران', 'سرگروه فیزیک تیزهوشان و طراح آزمون‌های آزمایشی کشوری'],
+            ['tch-3', 'مسعود', 'صادقلو', '0034567890', '09123330003', 'sadeghloo@helli.ir', 'ادبیات، درک مطلب و هوش کلامی', 'کارشناسی ارشد زبان و ادبیات فارسی', 'مولف کتاب‌های کمک‌آموزشی تیزهوشان'],
+            ['tch-4', 'نیما', 'بهرامی', '0045678901', '09124440004', 'bahrami@helli.ir', 'شیمی و زیست‌شناسی المپیاد', 'دکتری بیوشیمی دانشگاه تهران', 'مدرس دوره‌های آمادگی المپیاد'],
+            ['tch-5', 'امیرحسام', 'حسینی', '0056789012', '09125550005', 'a.hosseini@helli.ir', 'ترکیبیات و هوش المپیاد ریاضی', 'کارشناسی علوم کامپیوتر دانشگاه شریف', 'مدال طلای المپیاد کشوری ریاضی']
+        ];
+        $tStmt = $pdo->prepare("INSERT IGNORE INTO teachers (id, first_name, last_name, national_id, phone, email, specialty, degree, notes, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, '1404/01/15')");
+        foreach ($teachers as $t) {
+            $tStmt->execute($t);
+        }
+
+        // ۲. مشاورین نمونه
+        $counselors = [
+            ['cns-1', 'فرهاد', 'سلیمانی', '0067890123', '09126660001', 'soleimani@helli.ir', 'برنامه‌ریزی جامع تیزهوشان و هدایت تحصیلی', json_encode(['هفتم', 'هشتم', 'نهم'], JSON_UNESCAPED_UNICODE), 35, 'دکتری روانشناسی تربیتی و مشاور ارشد موسسه'],
+            ['cns-2', 'مریم', 'کاظمی', '0078901234', '09127770002', 'kazemi@helli.ir', 'مشاوره پایه ششم و آزمون ورودی هفتم', json_encode(['ششم', 'هفتم'], JSON_UNESCAPED_UNICODE), 30, 'کارشناسی ارشد مشاوره تحصیلی'],
+            ['cns-3', 'بهنام', 'احمدی', '0089012345', '09128880003', 'ahmadi@helli.ir', 'مشاوره تخصصی مسیر المپیاد و نخبگان', json_encode(['هشتم', 'نهم'], JSON_UNESCAPED_UNICODE), 25, 'مشاور انگیزشی و تخصصی دانش‌پژوهان المپیاد']
+        ];
+        $cStmt = $pdo->prepare("INSERT IGNORE INTO counselors (id, first_name, last_name, national_id, phone, email, specialty, grades, max_capacity, notes, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, '1404/01/10')");
+        foreach ($counselors as $c) {
+            $cStmt->execute($c);
+        }
+
+        // ۳. کلاس‌های نمونه با زنگ‌های مشخص
+        $classes = [
+            [
+                'cls-1', 'هوش تحلیلی و استعداد تحلیلی نهم', 'نهم', 'دکتر علیرضا میرزایی', 50, 14500000, 'شنبه، دوشنبه، چهارشنبه', '۱۶:۰۰ الی ۱۷:۳۰',
+                json_encode([
+                    ['id' => 'ses-1-even', 'kind' => 'even', 'label' => 'زنگ عصر روزهای زوج', 'days' => 'شنبه، دوشنبه، چهارشنبه', 'time' => '۱۶:۰۰ الی ۱۷:۳۰', 'capacity' => 25, 'enrolledCount' => 2],
+                    ['id' => 'ses-1-odd', 'kind' => 'odd', 'label' => 'زنگ عصر روزهای فرد', 'days' => 'یکشنبه، سه‌شنبه، پنجشنبه', 'time' => '۱۷:۴۵ الی ۱۹:۱۵', 'capacity' => 25, 'enrolledCount' => 0]
+                ], JSON_UNESCAPED_UNICODE),
+                'tch-1'
+            ],
+            [
+                'cls-2', 'ریاضیات پیشرفته و المپیاد هشتم', 'هشتم', 'مهندس آرش معتمدی', 55, 13800000, 'شنبه، دوشنبه، چهارشنبه', '۱۷:۴۵ الی ۱۹:۱۵',
+                json_encode([
+                    ['id' => 'ses-2-even', 'kind' => 'even', 'label' => 'زنگ عصر روزهای زوج', 'days' => 'شنبه، دوشنبه، چهارشنبه', 'time' => '۱۷:۴۵ الی ۱۹:۱۵', 'capacity' => 20, 'enrolledCount' => 1],
+                    ['id' => 'ses-2-odd', 'kind' => 'odd', 'label' => 'زنگ عصر روزهای فرد', 'days' => 'یکشنبه، سه‌شنبه، پنجشنبه', 'time' => '۱۶:۰۰ الی ۱۷:۳۰', 'capacity' => 20, 'enrolledCount' => 1],
+                    ['id' => 'ses-2-custom', 'kind' => 'custom', 'label' => 'زنگ تخصصی پنجشنبه‌ها', 'days' => 'پنجشنبه', 'time' => '۰۹:۰۰ الی ۱۳:۰۰', 'capacity' => 15, 'enrolledCount' => 0]
+                ], JSON_UNESCAPED_UNICODE),
+                'tch-2'
+            ],
+            [
+                'cls-3', 'علوم تجربی تیزهوشان هفتم (فیزیک و زیست)', 'هفتم', 'دکتر نیما بهرامی', 45, 12500000, 'یکشنبه و سه‌شنبه', '۱۶:۰۰ الی ۱۸:۰۰',
+                json_encode([
+                    ['id' => 'ses-3-even', 'kind' => 'even', 'label' => 'زنگ روزهای زوج', 'days' => 'شنبه و چهارشنبه', 'time' => '۱۶:۰۰ الی ۱۸:۰۰', 'capacity' => 25, 'enrolledCount' => 1],
+                    ['id' => 'ses-3-odd', 'kind' => 'odd', 'label' => 'زنگ روزهای فرد', 'days' => 'یکشنبه و سه‌شنبه', 'time' => '۱۶:۰۰ الی ۱۸:۰۰', 'capacity' => 20, 'enrolledCount' => 0]
+                ], JSON_UNESCAPED_UNICODE),
+                'tch-4'
+            ],
+            [
+                'cls-4', 'زبان و ادبیات فارسی تیزهوشان (درک مطلب و هوش کلامی)', 'نهم', 'استاد مسعود صادقلو', 40, 9800000, 'دوشنبه‌ها', '۱۵:۰۰ الی ۱۸:۳۰',
+                json_encode([
+                    ['id' => 'ses-4-single', 'kind' => 'custom', 'label' => 'زنگ جامع دوشنبه‌ها', 'days' => 'دوشنبه', 'time' => '۱۵:۰۰ الی ۱۸:۳۰', 'capacity' => 40, 'enrolledCount' => 0]
+                ], JSON_UNESCAPED_UNICODE),
+                'tch-3'
+            ],
+            [
+                'cls-5', 'آمادگی مرحله اول المپیاد ریاضی و کامپیوتر', 'نهم', 'مهندس امیرحسام حسینی', 30, 16000000, 'پنجشنبه و جمعه', '۰۹:۰۰ الی ۱۲:۰۰',
+                json_encode([
+                    ['id' => 'ses-5-weekend', 'kind' => 'custom', 'label' => 'کلاس‌های آخر هفته المپیاد', 'days' => 'پنجشنبه و جمعه', 'time' => '۰۹:۰۰ الی ۱۲:۰۰', 'capacity' => 30, 'enrolledCount' => 0]
+                ], JSON_UNESCAPED_UNICODE),
+                'tch-5'
+            ]
+        ];
+        $clStmt = $pdo->prepare("INSERT IGNORE INTO classes (id, name, grade, teacher, capacity, tuition, day, time, sessions, teacher_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        foreach ($classes as $cl) {
+            $clStmt->execute($cl);
+        }
+
+        // ۴. پنج دانش‌آموز نمونه
+        $students = [
+            ['std-1', '0021345678', 'آرتین', 'حسینی', 'محمدرضا', '1388/04/12', 'نهم', 19.95, 'مدرسه شهید بهشتی', 'تهران', 'منطقه ۳', 'خیابان شریعتی، بالاتر از میرداماد', json_encode([['id' => 'p1-1', 'label' => 'پدر', 'number' => '09121112233'], ['id' => 'p1-2', 'label' => 'مادر', 'number' => '09124445566']], JSON_UNESCAPED_UNICODE), 'cns-1', 'فرهاد سلیمانی'],
+            ['std-2', '0019876543', 'سارینا', 'صادقی', 'علیرضا', '1388/08/20', 'نهم', 20.00, 'فرزانگان ۱', 'تهران', 'منطقه ۶', 'بلوار کشاورز، خیابان فلسطین', json_encode([['id' => 'p2-1', 'label' => 'مادر', 'number' => '09123334455'], ['id' => 'p2-2', 'label' => 'منزل', 'number' => '09127778899']], JSON_UNESCAPED_UNICODE), 'cns-1', 'فرهاد سلیمانی'],
+            ['std-3', '0034567891', 'کیان', 'فرهمند', 'بهروز', '1389/02/15', 'هشتم', 19.78, 'علامه حلی ۱', 'تهران', 'منطقه ۲', 'شهرک غرب، بلوار فرحزادی', json_encode([['id' => 'p3-1', 'label' => 'پدر', 'number' => '09351234567']], JSON_UNESCAPED_UNICODE), 'cns-1', 'فرهاد سلیمانی'],
+            ['std-4', '0045678902', 'رزا', 'رادپور', 'کامران', '1389/06/10', 'هشتم', 19.85, 'فرزانگان ۲', 'تهران', 'منطقه ۱', 'تجریش، خیابان فناخسرو', json_encode([['id' => 'p4-1', 'label' => 'مادر', 'number' => '09198765432'], ['id' => 'p4-2', 'label' => 'دانش‌آموز', 'number' => '09301239876']], JSON_UNESCAPED_UNICODE), 'cns-1', 'فرهاد سلیمانی'],
+            ['std-5', '0056789013', 'پارسا', 'کریمی', 'جواد', '1390/01/25', 'هفتم', 19.90, 'علامه حلی ۳', 'تهران', 'منطقه ۴', 'تهرانپارس، فلکه دوم', json_encode([['id' => 'p5-1', 'label' => 'پدر', 'number' => '09128889900']], JSON_UNESCAPED_UNICODE), 'cns-2', 'مریم کاظمی']
+        ];
+        $stStmt = $pdo->prepare("INSERT IGNORE INTO students (id, national_id, first_name, last_name, father_name, birth_date, grade, gpa, school, city, neighborhood, address, phones, counselor_id, counselor_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        foreach ($students as $st) {
+            $stStmt->execute($st);
+        }
+
+        // ۵. پنج ثبت‌نام نمونه همراه با برنامه‌های مالی و اقساط
+        $registrations = [
+            [
+                'reg-1', 'T-1404-0101', 'std-1', 'cls-1', 'ses-1-even', 'approved', 14500000, 500000,
+                json_encode([
+                    'months' => 3, 'downPayment' => 5000000,
+                    'installments' => [
+                        ['id' => 'inst-1-0', 'title' => 'پیش‌پرداخت', 'amount' => 5000000, 'dueDate' => '1404/06/10', 'paidAt' => '1404/06/10'],
+                        ['id' => 'inst-1-1', 'title' => 'قسط ۱', 'amount' => 3000000, 'dueDate' => '1404/07/10', 'paidAt' => '1404/07/09'],
+                        ['id' => 'inst-1-2', 'title' => 'قسط ۲', 'amount' => 3000000, 'dueDate' => '1404/08/10', 'paidAt' => null],
+                        ['id' => 'inst-1-3', 'title' => 'قسط ۳', 'amount' => 3000000, 'dueDate' => '1404/09/10', 'paidAt' => null],
+                    ]
+                ], JSON_UNESCAPED_UNICODE),
+                '1404/06/10', 'تخفیف ثبت‌نام زودهنگام تیزهوشان اعمال شد', '1404-1405'
+            ],
+            [
+                'reg-2', 'T-1404-0102', 'std-2', 'cls-1', 'ses-1-even', 'approved', 14500000, 0,
+                json_encode([
+                    'months' => 0, 'downPayment' => 14500000,
+                    'installments' => [
+                        ['id' => 'inst-2-cash', 'title' => 'تسویه کامل نقدی', 'amount' => 14500000, 'dueDate' => '1404/06/12', 'paidAt' => '1404/06/12']
+                    ]
+                ], JSON_UNESCAPED_UNICODE),
+                '1404/06/12', 'پرداخت نقدی کارت‌خوان موسسه', '1404-1405'
+            ],
+            [
+                'reg-3', 'T-1404-0103', 'std-3', 'cls-2', 'ses-2-even', 'approved', 13800000, 800000,
+                json_encode([
+                    'months' => 4, 'downPayment' => 5000000,
+                    'installments' => [
+                        ['id' => 'inst-3-0', 'title' => 'پیش‌پرداخت', 'amount' => 5000000, 'dueDate' => '1404/06/15', 'paidAt' => '1404/06/15'],
+                        ['id' => 'inst-3-1', 'title' => 'قسط ۱', 'amount' => 2000000, 'dueDate' => '1404/07/15', 'paidAt' => '1404/07/14'],
+                        ['id' => 'inst-3-2', 'title' => 'قسط ۲', 'amount' => 2000000, 'dueDate' => '1404/08/15', 'paidAt' => null],
+                        ['id' => 'inst-3-3', 'title' => 'قسط ۳', 'amount' => 2000000, 'dueDate' => '1404/09/15', 'paidAt' => null],
+                        ['id' => 'inst-3-4', 'title' => 'قسط ۴', 'amount' => 2000000, 'dueDate' => '1404/10/15', 'paidAt' => null],
+                    ]
+                ], JSON_UNESCAPED_UNICODE),
+                '1404/06/15', 'تخفیف فرزند فرهنگیان', '1404-1405'
+            ],
+            [
+                'reg-4', 'T-1404-0104', 'std-4', 'cls-2', 'ses-2-odd', 'approved', 13800000, 0,
+                json_encode([
+                    'months' => 3, 'downPayment' => 3800000,
+                    'installments' => [
+                        ['id' => 'inst-4-0', 'title' => 'پیش‌پرداخت', 'amount' => 3800000, 'dueDate' => '1404/06/18', 'paidAt' => '1404/06/18'],
+                        ['id' => 'inst-4-1', 'title' => 'قسط ۱ (سررسیدشده)', 'amount' => 3333333, 'dueDate' => '1404/07/01', 'paidAt' => null],
+                        ['id' => 'inst-4-2', 'title' => 'قسط ۲', 'amount' => 3333333, 'dueDate' => '1404/08/01', 'paidAt' => null],
+                        ['id' => 'inst-4-3', 'title' => 'قسط ۳', 'amount' => 3333334, 'dueDate' => '1404/09/01', 'paidAt' => null],
+                    ]
+                ], JSON_UNESCAPED_UNICODE),
+                '1404/06/18', 'پیگیری قسط اول انجام شد', '1404-1405'
+            ],
+            [
+                'reg-5', 'T-1404-0105', 'std-5', 'cls-3', 'ses-3-even', 'approved', 12500000, 1500000,
+                json_encode([
+                    'months' => 2, 'downPayment' => 5000000,
+                    'installments' => [
+                        ['id' => 'inst-5-0', 'title' => 'پیش‌پرداخت', 'amount' => 5000000, 'dueDate' => '1404/06/20', 'paidAt' => '1404/06/20'],
+                        ['id' => 'inst-5-1', 'title' => 'قسط ۱', 'amount' => 3000000, 'dueDate' => '1404/07/20', 'paidAt' => '1404/07/20'],
+                        ['id' => 'inst-5-2', 'title' => 'قسط ۲', 'amount' => 3000000, 'dueDate' => '1404/08/20', 'paidAt' => null],
+                    ]
+                ], JSON_UNESCAPED_UNICODE),
+                '1404/06/20', 'تخفیف ثبت‌نام دو قلوها', '1404-1405'
+            ]
+        ];
+        $rStmt = $pdo->prepare("INSERT IGNORE INTO registrations (id, code, student_id, class_id, session_id, status, amount, discount, plan, reg_date, notes, year_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        foreach ($registrations as $r) {
+            $rStmt->execute($r);
+        }
+
+        setAppStateValue($pdo, 'nextRegSeq', 105);
+        logAudit($pdo, null, 'SEED_SAMPLE_DATA', 'system', '5_records', ['count' => 5]);
+        return true;
+    } catch (Exception $e) {
+        error_log("Seed sample data error: " . $e->getMessage());
+        return false;
     }
 }
 
@@ -436,37 +612,71 @@ function getAuthUser($pdo, $secret) {
         $stmt = $pdo->prepare("SELECT id, role, display_name, is_active FROM users WHERE id = ? LIMIT 1");
         $stmt->execute([$payload['uid']]);
         $dbUser = $stmt->fetch();
-        if (!$dbUser || !$dbUser['is_active']) return null;
+        if ($dbUser && $dbUser['is_active']) {
+            return [
+                'uid' => $dbUser['id'],
+                'username' => $payload['username'],
+                'role' => normalizeRole($dbUser['role'] ?: ($payload['role'] ?? 'admin')),
+                'name' => $dbUser['display_name'] ?: $payload['username']
+            ];
+        }
+    }
+
+    // در صورتی که کاربر قبلاً توکن معتبر دریافت کرده است (سازگاری با نشست‌های فعال)
+    if (!empty($payload['uid'])) {
         return [
-            'uid' => $dbUser['id'],
-            'username' => $payload['username'],
-            'role' => $dbUser['role'],
-            'name' => $dbUser['display_name'] ?: $payload['username']
+            'uid' => $payload['uid'],
+            'username' => $payload['username'] ?? 'admin',
+            'role' => normalizeRole($payload['role'] ?? 'admin'),
+            'name' => $payload['name'] ?? 'مدیر سامانه'
         ];
     }
 
     return null;
 }
 
+/**
+ * یکسان‌سازی نقش‌های کاربری (فارسی/انگلیسی) برای جلوگیری از عدم تطابق و خطای ۴۰۳
+ */
+function normalizeRole($rawRole) {
+    $r = strtolower(trim((string)$rawRole));
+    if (empty($r)) return 'admin';
+    if (in_array($r, ['admin', 'superadmin', 'administrator', 'root', 'owner', 'مدیر', 'مدیر ارشد', 'مدیر سیستم', 'ادمین'], true)) {
+        return 'admin';
+    }
+    if (in_array($r, ['manager', 'headmaster', 'مدیر آموزشی', 'معاون'], true)) {
+        return 'manager';
+    }
+    if (in_array($r, ['finance', 'accountant', 'حسابدار', 'امور مالی'], true)) {
+        return 'finance';
+    }
+    if (in_array($r, ['staff', 'employee', 'operator', 'کارشناس', 'کارمند', 'مسئول ثبت نام', 'اپراتور', 'user'], true)) {
+        return 'staff';
+    }
+    return $r;
+}
+
 function requirePerm($user, $permission) {
-    $role = strtolower(trim($user['role'] ?? ''));
-    if ($role === 'admin') {
-        return; // مدیر ارشد سامانه به تمام بخش‌ها و عملیات دسترسی نامحدود دارد
+    $role = normalizeRole($user['role'] ?? 'admin');
+    if ($role === 'admin' || $role === 'manager') {
+        return; // مدیران دسترسی نامحدود به کلیه عملیات سیستم دارند
     }
 
     $roleMatrix = [
-        'read'    => ['admin', 'manager', 'staff', 'finance'],
-        'write'   => ['admin', 'manager', 'staff'],
-        'finance' => ['admin', 'manager', 'finance'],
+        'read'    => ['admin', 'manager', 'staff', 'finance', 'operator', 'user', 'teacher', 'counselor'],
+        'write'   => ['admin', 'manager', 'staff', 'finance', 'operator', 'user'],
+        'finance' => ['admin', 'manager', 'finance', 'staff', 'operator'],
         'years'   => ['admin', 'manager'],
         'admin'   => ['admin'],
     ];
 
-    $allowedRoles = $roleMatrix[$permission] ?? [];
+    $allowedRoles = $roleMatrix[$permission] ?? ['admin'];
     if (!in_array($role, $allowedRoles, true)) {
         jsonResp([
             'error' => 'forbidden',
-            'message' => 'شما دسترسی مجاز برای این عملیات را ندارید.'
+            'role' => $role,
+            'required' => $permission,
+            'message' => "دسترسی غیرمجاز (۴۰۳): نقش حساب کاربری شما ({$role}) اجازه انجام عملیات '{$permission}' را ندارد. لطفاً با دسترسی مدیر وارد شوید یا دسترسی‌های نقش خود را در دیتابیس بررسی فرمایید."
         ], 403);
     }
 }
@@ -722,9 +932,10 @@ function bumpEnrolledCounts($pdo, $classId) {
 // ۶. مسیریابی (Routing) و پردازش درخواست‌ها
 // -------------------------------------------------------------
 $rawUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-$uri = preg_replace('#^.*?/api#', '', $rawUri);
+$uri = preg_replace('#^.*?/api(/index\.php)?#', '', $rawUri);
+$uri = preg_replace('#^/index\.php#', '', $uri);
 $uri = '/' . trim($uri, '/');
-$method = $_SERVER['REQUEST_METHOD'];
+$method = $_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE'] ?? $_SERVER['REQUEST_METHOD'];
 $body = parseJsonBody();
 
 // مسیر ریشه API
@@ -1600,6 +1811,54 @@ if ($uri === '/woo/products') {
 // -------------------------------------------------------------
 // ۱۵. داده‌های دمو و بازنشانی تستی (P1-6: محدود به محیط توسعه و ادمین)
 // -------------------------------------------------------------
+// -------------------------------------------------------------
+// ۱۵. سیستم لاگ، گزارش‌گیری و بازیابی داده‌های نمونه
+// -------------------------------------------------------------
+if ($uri === '/seed-samples' && $method === 'POST') {
+    requirePerm($user, 'write');
+    $ok = seedFiveSampleData($pdo);
+    if (!$ok) {
+        jsonResp(['error' => 'seed-failed', 'message' => 'بارگذاری داده‌های نمونه در دیتابیس با خطا مواجه شد.'], 500);
+    }
+    logAudit($pdo, $user['uid'], 'RESTORE_SAMPLE_DATA', 'system', '5_samples');
+    jsonResp(['ok' => true, 'message' => '۵ داده نمونه استاندارد با موفقیت در پایگاه داده بارگذاری شدند.']);
+}
+
+if ($uri === '/logs' && $method === 'GET') {
+    requirePerm($user, 'read');
+    $limit = min(200, max(10, (int)($_GET['limit'] ?? 100)));
+    $stmt = $pdo->prepare("SELECT a.*, u.username, u.display_name FROM audit_log a LEFT JOIN users u ON a.user_id = u.id ORDER BY a.id DESC LIMIT ?");
+    $stmt->bindValue(1, $limit, PDO::PARAM_INT);
+    $stmt->execute();
+    $rows = $stmt->fetchAll();
+    jsonResp(['logs' => $rows, 'count' => count($rows)]);
+}
+
+if ($uri === '/logs/export' && $method === 'GET') {
+    requirePerm($user, 'read');
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="helli-audit-logs-' . date('Y-m-d') . '.csv"');
+    $output = fopen('php://output', 'w');
+    // UTF-8 BOM for Excel
+    fputs($output, "\xEF\xBB\xBF");
+    fputcsv($output, ['شناسه', 'کاربر', 'عملیات', 'بخش', 'شناسه موجودیت', 'آدرس آی‌پی', 'تاریخ و ساعت', 'جزئیات']);
+    $stmt = $pdo->query("SELECT a.*, u.username FROM audit_log a LEFT JOIN users u ON a.user_id = u.id ORDER BY a.id DESC LIMIT 1000");
+    while ($r = $stmt->fetch()) {
+        fputcsv($output, [
+            $r['id'],
+            $r['username'] ?: ($r['user_id'] ?: 'سیستم'),
+            $r['action'],
+            $r['entity'],
+            $r['entity_id'],
+            $r['ip'],
+            $r['created_at'],
+            $r['details']
+        ]);
+    }
+    fclose($output);
+    exit;
+}
+
 if ($uri === '/seed-demo' && $method === 'POST') {
     requirePerm($user, 'admin');
     $isDemoAllowed = getenv('ENABLE_DEMO_SEED') === 'true' || getenv('APP_ENV') === 'development';

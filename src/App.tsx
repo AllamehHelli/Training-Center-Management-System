@@ -3,12 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppProvider, useAppStore, DEMO_TOOLS_ENABLED } from './store';
 import { SettingsProvider } from './Settings';
 import { ToastProvider, useToast, ConfirmModal } from './ui';
 import { getTodayJalali, toPersianDigits, downloadCSV } from './utils';
 import { BACKEND_ENABLED, clearToken, getToken } from './api';
+import { logger } from './logger';
+import { SystemLogModal } from './components/SystemLogModal';
 
 // Icons & Lucide
 import {
@@ -34,6 +36,7 @@ import {
   UserRound,
   GraduationCap,
   HeartHandshake,
+  FileText,
 } from 'lucide-react';
 import { LogoHelli } from './Logo';
 import { CommandPalette } from './components/CommandPalette';
@@ -90,6 +93,14 @@ const AppContent: React.FC = () => {
   const [unreadNotificationCount, setUnreadNotificationCount] = useState<number>(0);
   const [hoveredNavId, setHoveredNavId] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState<JalaliDateRange>({ preset: 'all' });
+  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
+  const [logErrorCount, setLogErrorCount] = useState(0);
+
+  useEffect(() => {
+    return logger.subscribe((logs) => {
+      setLogErrorCount(logs.filter((l) => l.level === 'error').length);
+    });
+  }, []);
   // ME-3: filter hand-off from the dashboard table ("view all") to the
   // registrations page.
   const [registrationsFilters, setRegistrationsFilters] = useState<Record<string, string> | undefined>(undefined);
@@ -455,6 +466,22 @@ const AppContent: React.FC = () => {
               <span>خروجی</span>
             </button>
 
+            {/* System Logs & Diagnostics Trigger */}
+            <button
+              type="button"
+              onClick={() => setIsLogModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-neutral-50 border border-neutral-200/80 text-neutral-700 rounded-full text-xs font-medium shadow-2xs transition-colors relative cursor-pointer"
+              title="سیستم لاگ و خطایابی سامانه (مشاهده، خروجی JSON/CSV و بارگذاری داده نمونه)"
+            >
+              <FileText size={13} className="text-neutral-500" />
+              <span className="hidden md:inline">لاگ‌های سیستم</span>
+              {logErrorCount > 0 && (
+                <span className="px-1.5 py-0.2 text-[10px] font-bold bg-rose-500 text-white rounded-full font-mono">
+                  {logErrorCount}
+                </span>
+              )}
+            </button>
+
             {/* Notification Bell with Badge */}
             <button
               type="button"
@@ -615,6 +642,15 @@ const AppContent: React.FC = () => {
         cancelText="انصراف"
         danger={true}
         requirePhrase="بازنشانی کن"
+      />
+
+      {/* System Log & Diagnostics Modal */}
+      <SystemLogModal
+        isOpen={isLogModalOpen}
+        onClose={() => setIsLogModalOpen(false)}
+        onRestoreFiveSamples={() => {
+          dispatch({ type: 'RESTORE_FIVE_SAMPLES' });
+        }}
       />
     </div>
   );

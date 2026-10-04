@@ -1233,3 +1233,24 @@ export function migrateLegacyData(parsed: any): {
   };
 }
 
+/**
+ * دریافت دقیق ۵ رکورد نمونه استاندارد موسسه علامه حلی
+ * شامل ۵ دانش‌آموز، ۵ کلاس، ۵ ثبت‌نام همراه با دفترچه اقساط، مدرسین و مشاورین
+ */
+export function getFiveStandardSampleData(): {
+  students: Student[];
+  classes: ClassRoom[];
+  registrations: Registration[];
+  teachers: Teacher[];
+  counselors: Counselor[];
+} {
+  const seed = buildSeedData();
+  return {
+    students: seed.students.slice(0, 5),
+    classes: seed.classes.slice(0, 5),
+    registrations: seed.registrations.slice(0, 5),
+    teachers: seed.teachers.slice(0, 5),
+    counselors: seed.counselors.slice(0, 3),
+  };
+}
+

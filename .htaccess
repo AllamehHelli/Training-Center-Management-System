@@ -13,17 +13,13 @@
   RewriteRule ^(package|package-lock|tsconfig)\.json$ - [F,L]
   RewriteRule ^(PR_DESCRIPTION|README)\.md$ - [F,L]
 
-  # ۱. هدایت درخواست‌های API به اسکریپت PHP (در صورت وجود در ریشه، dist یا php-api)
-  RewriteCond %{REQUEST_URI} ^/api(/.*)?$ [NC]
-  RewriteCond %{DOCUMENT_ROOT}/api/index.php -f
+  # ۱. هدایت پایدار و قطعی درخواست‌های /api به اسکریپت PHP (پشتیبانی کامل از ساب‌دامین و دایرکتوری‌های فرعی)
+  RewriteRule ^api/index\.php(/.*)?$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
   RewriteRule ^api(/.*)?$ api/index.php [QSA,L]
-
-  RewriteCond %{REQUEST_URI} ^/api(/.*)?$ [NC]
-  RewriteCond %{DOCUMENT_ROOT}/dist/api/index.php -f
+  RewriteCond %{REQUEST_FILENAME} !-f
   RewriteRule ^api(/.*)?$ dist/api/index.php [QSA,L]
-
-  RewriteCond %{REQUEST_URI} ^/api(/.*)?$ [NC]
-  RewriteCond %{DOCUMENT_ROOT}/php-api/index.php -f
+  RewriteCond %{REQUEST_FILENAME} !-f
   RewriteRule ^api(/.*)?$ php-api/index.php [QSA,L]
 
   # ۲. بازنویسی هوشمند پوشه فونت‌ها و فایل‌های استاتیک از dist یا public

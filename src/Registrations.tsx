@@ -37,7 +37,7 @@ import { LogoHelli } from './Logo';
 import { JalaliDatePicker } from './JalaliDatePicker';
 import { PaymentDateModal } from './components/PaymentDateModal';
 import { StudentDossierModal } from './components/StudentDossierModal';
-import { GraduationCap } from 'lucide-react';
+import { GraduationCap, PlusCircle } from 'lucide-react';
 
 interface RegistrationsProps {
   /** ME-3: filters carried over from the dashboard "view all" action. */
@@ -516,7 +516,26 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters, on
               {filteredRegistrations.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-400">
-                    موردی با این مشخصات یافت نشد.
+                    <div className="flex flex-col items-center justify-center gap-3">
+                      <p className="text-xs">
+                        {state.registrations.length === 0
+                          ? 'هیچ پرونده ثبت‌نامی در سامانه موجود نیست.'
+                          : 'موردی با این مشخصات یافت نشد.'}
+                      </p>
+                      {state.registrations.length === 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            dispatch({ type: 'RESTORE_FIVE_SAMPLES' });
+                            showToast('۵ داده نمونه استاندارد با موفقیت بارگذاری شدند.', 'success');
+                          }}
+                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <PlusCircle size={14} />
+                          <span>بارگذاری ۵ داده نمونه جهت بررسی عملکرد</span>
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ) : (

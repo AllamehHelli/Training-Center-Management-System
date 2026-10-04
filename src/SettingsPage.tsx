@@ -23,8 +23,10 @@ import {
 import { toPersianDigits, formatToman } from './utils';
 import { PaymentPlanManager } from './PaymentPlanManager';
 import { AcademicYearManager } from './AcademicYearManager';
-import { Type, UploadCloud, CheckCircle2, FileText, AlertCircle, Sparkles, RefreshCw } from 'lucide-react';
+import { Type, UploadCloud, CheckCircle2, FileText, AlertCircle, Sparkles, RefreshCw, Download, Copy, PlusCircle } from 'lucide-react';
 import { PRESET_FONTS, setActiveFont, getActiveFontId, uploadAndApplyFont, SystemFontOption } from './fontManager';
+import { logger } from './logger';
+import { BACKEND_ENABLED } from './api';
 
 export const SettingsPage: React.FC = () => {
   const {
@@ -38,10 +40,10 @@ export const SettingsPage: React.FC = () => {
     resetGrades,
   } = useFieldSettings();
 
-  const { state } = useAppStore();
+  const { state, dispatch } = useAppStore();
   const { showToast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<'years' | 'grades' | 'plans' | 'fields' | 'fonts'>('years');
+  const [activeTab, setActiveTab] = useState<'years' | 'grades' | 'plans' | 'fields' | 'fonts' | 'logs'>('years');
   const [localState, setLocalState] = useState<FieldSettings>({ ...fieldSettings });
 
   // Font Management State
@@ -270,6 +272,18 @@ export const SettingsPage: React.FC = () => {
           >
             <Type size={13} className={activeTab === 'fonts' ? 'text-neutral-900' : 'text-neutral-400'} />
             <span>فونت و ظاهر</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('logs')}
+            className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-full transition-all ${
+              activeTab === 'logs'
+                ? 'bg-white text-neutral-900 shadow-2xs'
+                : 'text-neutral-500 hover:text-neutral-900'
+            }`}
+          >
+            <FileText size={13} className={activeTab === 'logs' ? 'text-neutral-900' : 'text-neutral-400'} />
+            <span>لاگ‌ها و خطایابی</span>
           </button>
         </div>
       </div>
@@ -727,6 +741,145 @@ export const SettingsPage: React.FC = () => {
               <li>در صورت داشتن نسخه بولد، آن را با نام <code className="font-mono bg-white px-1.5 py-0.5 rounded border border-amber-200">font-bold.ttf</code> در همان پوشه بگذارید.</li>
               <li>با کامیت و پوش کردن روی گیت‌هاب، اکشن استقرار خودکار فایل‌ها را در هاست قرار داده و کلیه کاربران بدون نیاز به هیچ تنظیمی دقیقاً همین فونت را مشاهده خواهند کرد.</li>
             </ol>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* TAB 5: SYSTEM LOGS, DIAGNOSTICS & SAMPLE DATA                 */}
+      {/* ------------------------------------------------------------- */}
+      {activeTab === 'logs' && (
+        <div className="space-y-6">
+          <div className="bg-[#FBFDFC] rounded-2xl border border-slate-200/80 p-5 shadow-xs space-y-5">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div>
+                <h2 className="text-lg font-bold text-[#0A3528]">
+                  سیستم لاگ، عیب‌یابی و گزارش‌گیری سامانه
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  بررسی کلیه عملیات ثبت‌نام، همگام‌سازی، نشست کاربری و خطاهای سرور PHP با قابلیت خروجی
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const json = logger.exportJson();
+                    const blob = new Blob([json], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `helli-logs-${new Date().toISOString().slice(0, 10)}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    showToast('خروجی JSON لاگ‌ها دریافت شد.', 'success');
+                  }}
+                  className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Download size={13} />
+                  <span>خروجی JSON</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const csv = logger.exportCsv();
+                    const blob = new Blob([csv], { type: 'text/csv' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `helli-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    showToast('خروجی CSV لاگ‌ها دریافت شد.', 'success');
+                  }}
+                  className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Download size={13} />
+                  <span>خروجی CSV</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    dispatch({ type: 'RESTORE_FIVE_SAMPLES' });
+                    showToast('۵ داده نمونه استاندارد با موفقیت در سامانه بارگذاری شدند.', 'success');
+                  }}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                >
+                  <PlusCircle size={13} />
+                  <span>بارگذاری مجدد ۵ داده نمونه</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Diagnostics Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 bg-white rounded-xl border border-slate-200/90 space-y-1.5">
+                <div className="text-[11px] text-slate-500 font-medium">معماری سرور</div>
+                <div className="text-sm font-bold text-slate-800">
+                  {BACKEND_ENABLED ? 'PHP 8.x + MySQL (هاست cPanel)' : 'محلی (بدون سرور)'}
+                </div>
+                <p className="text-[11px] text-slate-400">کامل مستقل از Node.js، سازگار با انواع هاست اشتراکی</p>
+              </div>
+
+              <div className="p-4 bg-white rounded-xl border border-slate-200/90 space-y-1.5">
+                <div className="text-[11px] text-slate-500 font-medium">آمار پرونده‌ها</div>
+                <div className="text-sm font-bold text-slate-800 font-mono">
+                  {state.students.length} دانش‌آموز | {state.registrations.length} پرونده
+                </div>
+                <p className="text-[11px] text-slate-400">تعداد کلاس‌های فعال: {state.classes.length}</p>
+              </div>
+
+              <div className="p-4 bg-white rounded-xl border border-slate-200/90 space-y-1.5">
+                <div className="text-[11px] text-slate-500 font-medium">گزارش سریع پشتیبانی</div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const report = logger.generateDiagnosticsReport({
+                      'حالت': BACKEND_ENABLED ? 'سرور PHP' : 'لوکال',
+                      'دانش‌آموزان': state.students.length,
+                      'پرونده‌ها': state.registrations.length,
+                    });
+                    await navigator.clipboard.writeText(report);
+                    showToast('گزارش فنی در کلیپ‌بورد کپی شد.', 'success');
+                  }}
+                  className="w-full py-1.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Copy size={13} />
+                  <span>کپی خلاصه عیب‌یابی</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Embedded Live Log Ring Buffer */}
+            <div className="space-y-2">
+              <h3 className="text-xs font-bold text-slate-700">آخرین رویدادها و خطاهای ثبت‌شده:</h3>
+              <div className="max-h-80 overflow-y-auto space-y-1.5 bg-slate-50 p-3 rounded-xl border border-slate-200/70 text-xs">
+                {logger.getLogs().slice(-25).reverse().map((l) => (
+                  <div
+                    key={l.id}
+                    className={`p-2.5 rounded-lg border bg-white flex items-start justify-between gap-2 ${
+                      l.level === 'error' ? 'border-rose-300 bg-rose-50/30 text-rose-900' : 'border-slate-200 text-slate-700'
+                    }`}
+                  >
+                    <div className="space-y-0.5 min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-1.5 py-0.2 text-[10px] font-bold rounded ${
+                          l.level === 'error' ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {l.category}
+                        </span>
+                        <span className="text-[10px] font-mono text-slate-400 dir-ltr">{l.jalaliTime}</span>
+                        {l.status && <span className="text-[10px] font-mono text-slate-500">[{l.status}]</span>}
+                      </div>
+                      <p className="font-medium text-[11px] truncate">{l.message}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}
