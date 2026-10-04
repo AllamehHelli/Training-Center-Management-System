@@ -6,6 +6,13 @@
   RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
   SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
 
+  # مسدودسازی دسترسی مستقیم به فایل‌های حساس و سکرت‌ها (.env, .git, .sql, config, .md, .json)
+  RewriteRule ^\.env - [F,L]
+  RewriteRule ^\.git - [F,L]
+  RewriteRule \.(sql|bak|old|env|log)$ - [F,L]
+  RewriteRule ^(package|package-lock|tsconfig)\.json$ - [F,L]
+  RewriteRule ^(PR_DESCRIPTION|README)\.md$ - [F,L]
+
   # ۱. هدایت درخواست‌های API به اسکریپت PHP (در صورت وجود در ریشه، dist یا php-api)
   RewriteCond %{REQUEST_URI} ^/api(/.*)?$ [NC]
   RewriteCond %{DOCUMENT_ROOT}/api/index.php -f
@@ -19,12 +26,25 @@
   RewriteCond %{DOCUMENT_ROOT}/php-api/index.php -f
   RewriteRule ^api(/.*)?$ php-api/index.php [QSA,L]
 
-  # ۲. اگر کل سورس پروژه به همراه dist آپلود شده است (حل مشکل فعلی هاست شما)
+  # ۲. بازنویسی هوشمند پوشه فونت‌ها و فایل‌های استاتیک از dist یا public
+  RewriteCond %{DOCUMENT_ROOT}/dist/fonts/$1 -f
+  RewriteRule ^fonts/(.*)$ dist/fonts/$1 [L]
+
+  RewriteCond %{DOCUMENT_ROOT}/public/fonts/$1 -f
+  RewriteRule ^fonts/(.*)$ public/fonts/$1 [L]
+
+  # ۳. اگر کل سورس پروژه به همراه dist آپلود شده است
   RewriteCond %{DOCUMENT_ROOT}/dist/index.html -f
   RewriteRule ^(index\.html)?$ dist/index.html [L]
 
   RewriteCond %{DOCUMENT_ROOT}/dist/index.html -f
   RewriteRule ^assets/(.*)$ dist/assets/$1 [L]
+
+  # جلوگیری از بازنویسی فایل‌های استاتیک و فونت‌های گمشده به index.html
+  # (تا مرورگر به اشتباه HTML را به عنوان فونت پارس نکرده و خطای دکود ندهد)
+  RewriteCond %{REQUEST_URI} \.(ttf|woff|woff2|eot|otf|svg|png|jpg|jpeg|gif|ico|webp)$ [NC]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^ - [R=404,L]
 
   RewriteCond %{DOCUMENT_ROOT}/dist/index.html -f
   RewriteCond %{REQUEST_FILENAME} !-f
@@ -32,7 +52,7 @@
   RewriteCond %{REQUEST_URI} !^/api
   RewriteRule . dist/index.html [L]
 
-  # ۳. در صورتی که فقط محتویات بیلد شده dist در هاست قرار دارد (استقرار استاندارد)
+  # ۴. در صورتی که فقط محتویات بیلد شده dist در هاست قرار دارد (استقرار استاندارد)
   RewriteRule ^index\.html$ - [L]
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
@@ -41,10 +61,38 @@
   RewriteRule . /index.html [L]
 </IfModule>
 
+# تعیین MIME Type استاندارد فونت‌ها برای جلوگیری از خطای مرورگر
+<IfModule mod_mime.c>
+  AddType font/ttf .ttf
+  AddType font/woff .woff
+  AddType font/woff2 .woff2
+  AddType font/otf .otf
+</IfModule>
+
+# هدرهای CORS برای بارگذاری فونت‌ها در تمامی ساب‌دامین‌ها و دامنه‌ها
+<FilesMatch "\.(ttf|otf|eot|woff|woff2)$">
+  <IfModule mod_headers.c>
+    Header set Access-Control-Allow-Origin "*"
+  </IfModule>
+</FilesMatch>
+
 # کدگذاری پیش‌فرض UTF-8 و هدرهای امنیتی
 AddDefaultCharset UTF-8
 <IfModule mod_headers.c>
   Header set X-Content-Type-Options "nosniff"
   Header set X-Frame-Options "SAMEORIGIN"
   Header set X-XSS-Protection "1; mode=block"
+  Header set Referrer-Policy "strict-origin-when-cross-origin"
+  Header set Permissions-Policy "geolocation=(), microphone=(), camera=()"
 </IfModule>
+
+# ممانعت قطعی آپاچی از دانلود هر فایلی با پیشوند نقطه یا پسوندهای محرمانه
+<FilesMatch "(^\.|\.env|\.sql$|\.log$|\.bak$|\.sample\.php$)">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order deny,allow
+    Deny from all
+  </IfModule>
+</FilesMatch>

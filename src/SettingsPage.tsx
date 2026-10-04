@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useFieldSettings, DEFAULT_FIELD_SETTINGS } from './Settings';
 import { useAppStore } from './store';
 import { FieldSettings } from './types';
@@ -20,9 +20,11 @@ import {
   IconFinance,
   IconCalendar,
 } from './icons';
-import { toPersianDigits } from './utils';
+import { toPersianDigits, formatToman } from './utils';
 import { PaymentPlanManager } from './PaymentPlanManager';
 import { AcademicYearManager } from './AcademicYearManager';
+import { Type, UploadCloud, CheckCircle2, FileText, AlertCircle, Sparkles, RefreshCw } from 'lucide-react';
+import { PRESET_FONTS, setActiveFont, getActiveFontId, uploadAndApplyFont, SystemFontOption } from './fontManager';
 
 export const SettingsPage: React.FC = () => {
   const {
@@ -39,8 +41,37 @@ export const SettingsPage: React.FC = () => {
   const { state } = useAppStore();
   const { showToast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<'years' | 'grades' | 'plans' | 'fields'>('years');
+  const [activeTab, setActiveTab] = useState<'years' | 'grades' | 'plans' | 'fields' | 'fonts'>('years');
   const [localState, setLocalState] = useState<FieldSettings>({ ...fieldSettings });
+
+  // Font Management State
+  const [selectedFontId, setSelectedFontId] = useState<string>(getActiveFontId());
+  const [isUploadingFont, setIsUploadingFont] = useState(false);
+  const [uploadedFontName, setUploadedFontName] = useState<string | null>(
+    localStorage.getItem('helli_custom_font_filename')
+  );
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleSelectFont = (fontId: string) => {
+    setSelectedFontId(fontId);
+    setActiveFont(fontId);
+    showToast('فونت سامانه با موفقیت تغییر کرد', 'success');
+  };
+
+  const handleFontFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingFont(true);
+    const res = await uploadAndApplyFont(file);
+    setIsUploadingFont(false);
+    if (res.success) {
+      setSelectedFontId('custom-upload');
+      setUploadedFontName(file.name);
+      showToast(res.message, 'success');
+    } else {
+      showToast(res.message, 'error');
+    }
+  };
 
   // New Grade state
   const [newGradeName, setNewGradeName] = useState('');
@@ -227,6 +258,18 @@ export const SettingsPage: React.FC = () => {
           >
             <IconSettings size={13} className={activeTab === 'fields' ? 'text-neutral-900' : 'text-neutral-400'} />
             <span>فیلدهای پرونده</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('fonts')}
+            className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-full transition-all ${
+              activeTab === 'fonts'
+                ? 'bg-white text-neutral-900 shadow-2xs'
+                : 'text-neutral-500 hover:text-neutral-900'
+            }`}
+          >
+            <Type size={13} className={activeTab === 'fonts' ? 'text-neutral-900' : 'text-neutral-400'} />
+            <span>فونت و ظاهر</span>
           </button>
         </div>
       </div>
@@ -514,6 +557,176 @@ export const SettingsPage: React.FC = () => {
               تغییرات اعمال شده بلافاصله در فرم ثبت‌نام جدید، افزودن دانش‌آموز و سیستم ایمپورت گروهی اثر خواهند گذاشت.
               فیلدهای غیرفعال به عنوان اختیاری علامت‌گذاری می‌شوند و عدم تکمیل آن‌ها مانع ثبت نخواهد شد.
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* TAB 4: FONTS & TYPOGRAPHY MANAGEMENT                          */}
+      {/* ------------------------------------------------------------- */}
+      {activeTab === 'fonts' && (
+        <div className="space-y-6">
+          {/* Header Card */}
+          <div className="bg-[#FBFDFC] rounded-2xl border border-slate-200/80 p-5 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                  <Type className="text-[#162E6E]" size={20} />
+                  <span>مدیریت فونت و تایپوگرافی سامانه</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  شخصی‌سازی قلم سیستم، آپلود مستقیم فایل TTF در مرورگر و اتصال به فونت‌های گیتهاب و هاست بدون وابستگی خارجی.
+                </p>
+              </div>
+
+              {/* Direct File Upload Trigger */}
+              <div>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept=".ttf,.woff,.woff2,.otf"
+                  onChange={handleFontFileUpload}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploadingFont}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#162E6E] hover:bg-[#1D4ED8] text-white rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                >
+                  {isUploadingFont ? (
+                    <RefreshCw className="animate-spin" size={15} />
+                  ) : (
+                    <UploadCloud size={15} />
+                  )}
+                  <span>آپلود مستقیم فونت TTF / WOFF2</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Custom Uploaded Status Banner */}
+            {uploadedFontName && (
+              <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-xl flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-xs text-blue-900 font-medium">
+                  <CheckCircle2 size={16} className="text-blue-600 shrink-0" />
+                  <span>فونت بارگذاری‌شده در این مرورگر: <strong>{uploadedFontName}</strong></span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    localStorage.removeItem('helli_custom_font_data');
+                    localStorage.removeItem('helli_custom_font_filename');
+                    setUploadedFontName(null);
+                    handleSelectFont('app-auto');
+                    showToast('فونت اختصاصی حذف و به حالت خودکار بازگشت', 'info');
+                  }}
+                  className="text-[11px] text-blue-700 hover:text-red-600 underline font-medium cursor-pointer"
+                >
+                  حذف فونت آپلودی و بازگشت به پیش‌فرض
+                </button>
+              </div>
+            )}
+
+            {/* Font Grid List */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-2">
+              {PRESET_FONTS.map((font) => {
+                const isSelected = selectedFontId === font.id;
+                return (
+                  <div
+                    key={font.id}
+                    onClick={() => handleSelectFont(font.id)}
+                    className={`relative p-4 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+                      isSelected
+                        ? 'border-[#162E6E] bg-blue-50/30 shadow-xs'
+                        : 'border-slate-200/80 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <span className="font-bold text-xs text-slate-800">{font.name}</span>
+                        {isSelected && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#162E6E] text-white">
+                            <CheckCircle2 size={11} />
+                            <span>فعال</span>
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 leading-relaxed">{font.description}</p>
+                    </div>
+
+                    {/* Font Preview Text Styled with this font */}
+                    <div
+                      style={{ fontFamily: font.family }}
+                      className="p-2.5 bg-slate-50 rounded-lg border border-slate-100 text-xs text-slate-700 font-medium"
+                    >
+                      موسسه آموزشی علامه حلی (۱۲۳۴۵۶۷۸۹۰)
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Real-time Typography Preview Board */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs space-y-4">
+            <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+              <Sparkles size={16} className="text-amber-500" />
+              <span>پیش‌نمایش زنده المان‌ها و فرم‌ها با فونت انتخابی فعلی</span>
+            </h4>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Sample Record Box */}
+              <div className="p-4 bg-slate-50/80 border border-slate-200 rounded-xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-sm text-slate-800">علیرضا صادقی‌پور</span>
+                  <span className="px-2 py-0.5 bg-blue-100 text-blue-900 text-xs font-bold rounded-md">
+                    پایه دهم ریاضی
+                  </span>
+                </div>
+                <div className="text-xs text-slate-600 flex items-center justify-between">
+                  <span>کد ملی: {toPersianDigits('0012345678')}</span>
+                  <span>معدل کل: {toPersianDigits('19.85')}</span>
+                </div>
+                <div className="pt-2 border-t border-slate-200/70 flex items-center justify-between text-xs">
+                  <span className="text-slate-500">شهریه و وضعیت مالی:</span>
+                  <span className="font-bold text-emerald-700">{toPersianDigits(formatToman(14500000))}</span>
+                </div>
+              </div>
+
+              {/* Sample Action Buttons */}
+              <div className="p-4 bg-slate-50/80 border border-slate-200 rounded-xl flex flex-col justify-center gap-2.5">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="flex-1 py-2 px-3 bg-[#162E6E] text-white text-xs font-bold rounded-lg text-center shadow-xs"
+                  >
+                    پرونده آموزشی
+                  </button>
+                  <button
+                    type="button"
+                    className="flex-1 py-2 px-3 bg-[#0E7C5B] text-white text-xs font-bold rounded-lg text-center shadow-xs"
+                  >
+                    پرونده مالی (اقساط و تسویه)
+                  </button>
+                </div>
+                <div className="text-center text-[11px] text-slate-400">
+                  تمامی دکمه‌ها، جداول، عناوین و ارقام با فونت منتخب همگام هستند.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* GitHub & cPanel Deployment Guide */}
+          <div className="p-4 bg-amber-50/70 border border-amber-200/80 rounded-xl text-xs text-amber-900 leading-relaxed space-y-2">
+            <div className="flex items-center gap-2 font-bold text-amber-950">
+              <FileText size={16} className="text-amber-700" />
+              <span>راهنمای قرار دادن دائمی فایل TTF فونت در گیتهاب و هاست cPanel</span>
+            </div>
+            <ol className="list-decimal list-inside space-y-1.5 text-amber-900 pr-1 text-[11px]">
+              <li>فایل فونت خود را با نام <code className="font-mono bg-white px-1.5 py-0.5 rounded border border-amber-200">font-regular.ttf</code> در پوشه <code className="font-mono bg-white px-1.5 py-0.5 rounded border border-amber-200">public/fonts/</code> مخزن گیتهاب قرار دهید.</li>
+              <li>در صورت داشتن نسخه بولد، آن را با نام <code className="font-mono bg-white px-1.5 py-0.5 rounded border border-amber-200">font-bold.ttf</code> در همان پوشه بگذارید.</li>
+              <li>با کامیت و پوش کردن روی گیت‌هاب، اکشن استقرار خودکار فایل‌ها را در هاست قرار داده و کلیه کاربران بدون نیاز به هیچ تنظیمی دقیقاً همین فونت را مشاهده خواهند کرد.</li>
+            </ol>
           </div>
         </div>
       )}

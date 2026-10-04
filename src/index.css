@@ -1,12 +1,42 @@
 @import "tailwindcss";
 
 /* ------------------------------------------------------------- */
-/* تعریف فونت‌های محلی سیستم (Local Fonts from /public/fonts/)     */
-/* فایل‌های TTF قرار داده شده در گیتهاب مستقیماً اینجا اعمال می‌شوند */
+/* تعریف متغیر سراسری فونت فعال با اولویت فونت‌های محلی سیستم     */
+/* ------------------------------------------------------------- */
+:root {
+  --active-font-family: 'AppFont', 'IRANSansX', 'IRANSans', 'IRANSansWeb', 'Yekan Bakh', 'YekanBakh', 'Yekan', 'Dana', 'Peyda', 'Shabnam', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* ------------------------------------------------------------- */
+/* تعریف فونت محلی سیستم (Local Fonts from /public/fonts/)        */
+/* اولویت ۱: فونت‌های نصب شده در سیستم‌عامل کاربر (local)        */
+/* اولویت ۲: فایل‌های TTF/WOFF2 در پوشه /fonts/ هاست یا گیتهاب    */
 /* ------------------------------------------------------------- */
 @font-face {
   font-family: 'AppFont';
-  src: url('/fonts/font-regular.ttf') format('truetype');
+  src: local('IRANSansX'),
+       local('IRANSans'),
+       local('IRANSansWeb'),
+       local('Yekan Bakh'),
+       local('YekanBakh'),
+       local('Dana'),
+       local('Peyda'),
+       local('Shabnam'),
+       url('/fonts/font-regular.woff2') format('woff2'),
+       url('/fonts/font-regular.ttf') format('truetype'),
+       url('/fonts/font.ttf') format('truetype'),
+       url('/fonts/IRANSans.ttf') format('truetype'),
+       url('/fonts/IRANSans-Regular.ttf') format('truetype'),
+       url('/fonts/IRANSansWeb.ttf') format('truetype'),
+       url('/fonts/IRANSansX.ttf') format('truetype'),
+       url('/fonts/IRANSansX-Regular.ttf') format('truetype'),
+       url('/fonts/Yekan.ttf') format('truetype'),
+       url('/fonts/YekanBakh.ttf') format('truetype'),
+       url('/fonts/YekanBakh-Regular.ttf') format('truetype'),
+       url('/fonts/Dana.ttf') format('truetype'),
+       url('/fonts/Peyda.ttf') format('truetype'),
+       url('/fonts/Shabnam.ttf') format('truetype'),
+       url('/fonts/custom-font.ttf') format('truetype');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -14,8 +44,16 @@
 
 @font-face {
   font-family: 'AppFont';
-  src: url('/fonts/font-medium.ttf') format('truetype'),
-       url('/fonts/font-regular.ttf') format('truetype');
+  src: local('IRANSansX-Medium'),
+       local('IRANSans-Medium'),
+       local('Yekan Bakh Medium'),
+       url('/fonts/font-medium.woff2') format('woff2'),
+       url('/fonts/font-medium.ttf') format('truetype'),
+       url('/fonts/IRANSans-Medium.ttf') format('truetype'),
+       url('/fonts/IRANSansX-Medium.ttf') format('truetype'),
+       url('/fonts/YekanBakh-Medium.ttf') format('truetype'),
+       url('/fonts/font-regular.ttf') format('truetype'),
+       url('/fonts/font.ttf') format('truetype');
   font-weight: 500;
   font-style: normal;
   font-display: swap;
@@ -23,7 +61,19 @@
 
 @font-face {
   font-family: 'AppFont';
-  src: url('/fonts/font-bold.ttf') format('truetype'),
+  src: local('IRANSansX-Bold'),
+       local('IRANSans-Bold'),
+       local('Yekan Bakh Bold'),
+       local('Dana Bold'),
+       url('/fonts/font-bold.woff2') format('woff2'),
+       url('/fonts/font-bold.ttf') format('truetype'),
+       url('/fonts/IRANSans-Bold.ttf') format('truetype'),
+       url('/fonts/IRANSansWeb_Bold.ttf') format('truetype'),
+       url('/fonts/IRANSansX-Bold.ttf') format('truetype'),
+       url('/fonts/Yekan-Bold.ttf') format('truetype'),
+       url('/fonts/YekanBakh-Bold.ttf') format('truetype'),
+       url('/fonts/Dana-Bold.ttf') format('truetype'),
+       url('/fonts/Shabnam-Bold.ttf') format('truetype'),
        url('/fonts/font-regular.ttf') format('truetype');
   font-weight: 700;
   font-style: normal;
@@ -32,17 +82,22 @@
 
 @font-face {
   font-family: 'AppFont';
-  src: url('/fonts/font-bold.ttf') format('truetype'),
-       url('/fonts/font-regular.ttf') format('truetype');
+  src: local('IRANSansX-Black'),
+       local('IRANSans-Black'),
+       url('/fonts/font-bold.ttf') format('truetype'),
+       url('/fonts/IRANSansX-Bold.ttf') format('truetype'),
+       url('/fonts/font.ttf') format('truetype');
   font-weight: 800;
   font-style: normal;
   font-display: swap;
 }
 
 @theme {
-  --font-vazir: 'AppFont', 'Vazirmatn', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: 'AppFont', 'Vazirmatn', monospace;
-  --font-lalezar: 'AppFont', 'Vazirmatn', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-sans: var(--active-font-family, 'AppFont', 'IRANSansX', 'IRANSans', system-ui, sans-serif);
+  --font-heading: var(--active-font-family, 'AppFont', 'IRANSansX', 'IRANSans', system-ui, sans-serif);
+  --font-vazir: var(--active-font-family, 'AppFont', 'IRANSansX', 'IRANSans', system-ui, sans-serif);
+  --font-mono: 'AppFont', system-ui, monospace;
+  --font-lalezar: var(--active-font-family, 'AppFont', 'IRANSansX', 'IRANSans', system-ui, sans-serif);
 
   /* Modern SaaS Color Palette */
   --color-pine: #162E6E;
@@ -60,8 +115,9 @@
   --color-card: #FFFFFF;
 }
 
-body {
-  font-family: 'AppFont', 'Vazirmatn', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+/* اعمال سراسری فونت فعال روی کل المنت‌ها، باکس‌ها، متون و جداول */
+html, body, #root {
+  font-family: var(--active-font-family, 'AppFont', 'IRANSansX', 'IRANSans', system-ui, sans-serif) !important;
   background-color: #F4F5F8;
   background-image: 
     radial-gradient(ellipse 60% 40% at 85% 0%, rgba(253, 246, 235, 0.7), transparent 60%),
@@ -72,18 +128,17 @@ body {
   font-feature-settings: "tnum" 1;
 }
 
-h1, h2, h3, .font-heading {
-  font-family: 'AppFont', 'Vazirmatn', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  letter-spacing: 0.01em;
+*, *::before, *::after {
+  font-family: inherit;
 }
 
-/* Ensure all numbers render with Persian digits */
-input, select, textarea, button, table, span, div {
+input, select, textarea, button, table, span, div, p, h1, h2, h3, h4, h5, h6, label, td, th {
+  font-family: inherit;
   font-variant-numeric: tabular-nums;
 }
 
-.font-mono, [class*="tabular-nums"], .num-display {
-  font-family: 'AppFont', 'Vazirmatn', sans-serif !important;
+.font-sans, .font-heading, .font-vazir, [class*="tabular-nums"], .num-display {
+  font-family: var(--active-font-family, 'AppFont', 'IRANSansX', 'IRANSans', system-ui, sans-serif) !important;
   font-feature-settings: "tnum" 1;
 }
 
@@ -124,4 +179,3 @@ input, select, textarea, button, table, span, div {
     border: none !important;
   }
 }
-

@@ -14,7 +14,13 @@ date_default_timezone_set('Asia/Tehran');
 
 // هدرهای امنیت، CORS و جلوگیری از کش داده‌های حساس
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+if (!empty($origin)) {
+    header("Access-Control-Allow-Origin: $origin");
+    header('Access-Control-Allow-Credentials: true');
+} else {
+    header('Access-Control-Allow-Origin: *');
+}
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -41,8 +47,15 @@ set_exception_handler(function ($e) {
 });
 
 function parseJsonBody() {
+    $contentLength = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
+    if ($contentLength > 5 * 1024 * 1024) {
+        jsonResp(['error' => 'payload-too-large', 'message' => 'حجم داده ارسالی بیش از حد مجاز (حداکثر ۵ مگابایت) است.'], 413);
+    }
     $input = file_get_contents('php://input');
     if (empty($input)) return [];
+    if (strlen($input) > 5 * 1024 * 1024) {
+        jsonResp(['error' => 'payload-too-large', 'message' => 'حجم داده ارسالی بیش از حد مجاز است.'], 413);
+    }
     $data = json_decode($input, true);
     return is_array($data) ? $data : [];
 }
@@ -135,7 +148,13 @@ if (empty($config['jwt_secret']) && $pdo) {
     }
     $config['jwt_secret'] = $existingSecret;
 } elseif (empty($config['jwt_secret'])) {
-    $config['jwt_secret'] = 'fallback_secure_hash_' . hash('sha256', __DIR__);
+    if (session_status() === PHP_SESSION_NONE) {
+        @session_start();
+    }
+    if (empty($_SESSION['ephemeral_jwt_secret'])) {
+        $_SESSION['ephemeral_jwt_secret'] = bin2hex(random_bytes(32));
+    }
+    $config['jwt_secret'] = $_SESSION['ephemeral_jwt_secret'];
 }
 
 // -------------------------------------------------------------
@@ -457,6 +476,35 @@ function logAudit($pdo, $userId, $action, $entity, $entityId, $details = []) {
     } catch (Exception $e) { /* non-fatal */ }
 }
 
+function checkRateLimit($pdo, $ip, $action = 'LOGIN_FAILED', $maxAttempts = 5, $windowMinutes = 15) {
+    if (!$pdo || empty($ip)) return true;
+    try {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM audit_log WHERE action = ? AND ip = ? AND created_at > DATE_SUB(NOW(), INTERVAL ? MINUTE)");
+        $stmt->execute([$action, $ip, $windowMinutes]);
+        $count = (int)$stmt->fetchColumn();
+        return $count < $maxAttempts;
+    } catch (Exception $e) {
+        return true;
+    }
+}
+
+function isSafeExternalUrl($url) {
+    $parsed = parse_url($url);
+    if (!$parsed || empty($parsed['host']) || empty($parsed['scheme'])) return false;
+    $scheme = strtolower($parsed['scheme']);
+    if ($scheme !== 'https') return false; // اجبار استفاده از HTTPS برای امنیت داده‌های بانکی و ووکامرس
+
+    $host = strtolower($parsed['host']);
+    if (in_array($host, ['localhost', '127.0.0.1', '::1', '0.0.0.0', '169.254.169.254'])) return false;
+
+    // مسدودسازی محدوده‌های شبکه خصوصی (Private IP ranges - SSRF)
+    $ip = gethostbyname($host);
+    if ($ip && !filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+        return false;
+    }
+    return true;
+}
+
 function handleDbException(PDOException $e, $customMsg = '') {
     $errCode = $e->errorInfo[1] ?? 0;
     if ($errCode == 1062) {
@@ -698,8 +746,16 @@ if (!$pdo) {
     ], 500);
 }
 
-// مسیر لاگین کاربران
+// مسیر لاگین کاربران با گارد محافظت در برابر حملات Brute-Force
 if ($uri === '/auth/login' && $method === 'POST') {
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    if (!checkRateLimit($pdo, $ip, 'LOGIN_FAILED', 5, 15)) {
+        jsonResp([
+            'error' => 'too-many-requests',
+            'message' => 'تعداد دفعات ورود ناموفق بیش از حد مجاز است. به دلایل امنیتی حساب موقتاً مسدود شد؛ لطفاً ۱۵ دقیقه دیگر تلاش کنید.'
+        ], 429);
+    }
+
     $username = trim($body['username'] ?? '');
     $password = (string)($body['password'] ?? '');
 
@@ -712,6 +768,7 @@ if ($uri === '/auth/login' && $method === 'POST') {
     $userRow = $stmt->fetch();
 
     if (!$userRow || !password_verify($password, $userRow['password_hash'])) {
+        logAudit($pdo, null, 'LOGIN_FAILED', 'auth', $username, ['reason' => 'invalid-credentials']);
         jsonResp(['error' => 'invalid-credentials', 'message' => 'نام کاربری یا رمز عبور اشتباه است.'], 401);
     }
 
@@ -1447,6 +1504,10 @@ if (preg_match('#^/years/([^/]+)/archive$#', $uri, $m)) {
 // ۱۴. ووکامرس (WooCommerce) سمت سرور - اتصالات امن و احراز هویت Basic (P1-7, P2-8)
 // -------------------------------------------------------------
 function wooCurl($url, $ck, $cs) {
+    if (!isSafeExternalUrl($url)) {
+        return ['ok' => false, 'error' => 'آدرس فروشگاه نامعتبر است یا در محدوده شبکه‌های غیرمجاز قرار دارد (گارد ضد SSRF)', 'status' => 400];
+    }
+
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
