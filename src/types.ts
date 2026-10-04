@@ -21,6 +21,7 @@ export interface Student {
   grade: StudentGrade;
   gpa: number; // 0 to 20
   school: string;
+  birthDate?: string;
   counselorId?: string; // شناسه مشاور اختصاص داده شده
   counselorName?: string; // نام مشاور جهت دسترسی سریع
   createdAt: string; // Jalali or ISO

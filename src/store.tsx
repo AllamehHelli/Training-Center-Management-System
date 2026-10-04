@@ -197,6 +197,14 @@ export type AppAction =
   | { type: 'ADD_WOO_LOG'; payload: Omit<SyncLogItem, 'id'> }
   | { type: 'SYNC_WOO_PRODUCTS'; payload: ClassRoom[] }
   | { type: 'SYNC_WOO_ORDERS'; payload: { newStudents: Student[]; newRegistrations: Registration[] } }
+  | {
+      type: 'UPSERT_WOO_SYNC_DATA';
+      payload: {
+        classes: ClassRoom[];
+        students: Student[];
+        registrations: Registration[];
+      };
+    }
   | { type: 'RESET_DATA' }
   | { type: 'SET_VIEWING_YEAR'; payload: string }
   | {
@@ -524,6 +532,58 @@ function appReducer(state: AppState, action: AppAction): AppState {
         nextRegSeq: maxAcceptedSeq,
         students: [...acceptedStudents, ...state.students],
         registrations: [...acceptedRegistrations, ...state.registrations],
+      };
+    }
+
+    case 'UPSERT_WOO_SYNC_DATA': {
+      // ادغام یا به‌روزرسانی بدون تکرار (Idempotent Upsert) برای کلاس‌ها، دانش‌آموزان و ثبت‌نام‌ها
+      const { classes: inClasses, students: inStudents, registrations: inRegs } = action.payload;
+
+      // ۱. به‌روزرسانی یا افزودن کلاس‌ها
+      const classMap = new Map<string, ClassRoom>(state.classes.map((c) => [c.id, c]));
+      inClasses.forEach((c) => {
+        classMap.set(c.id, c);
+      });
+
+      // ۲. به‌روزرسانی یا افزودن دانش‌آموزان بر اساس id یا کد ملی
+      const studentMap = new Map<string, Student>(state.students.map((s) => [s.id, s]));
+      inStudents.forEach((newS) => {
+        studentMap.set(newS.id, newS);
+      });
+
+      // ۳. به‌روزرسانی یا افزودن ثبت‌نام‌ها و دفترچه اقساط
+      const regMap = new Map<string, Registration>(state.registrations.map((r) => [r.id, r]));
+      inRegs.forEach((newR) => {
+        const ex = regMap.get(newR.id);
+        if (ex) {
+          // در صورت وجود، اقساط و مبالغ را ادغام و به‌روز می‌کنیم
+          regMap.set(newR.id, {
+            ...ex,
+            amount: newR.amount,
+            status: newR.status,
+            plan: newR.plan,
+            notes: newR.notes || ex.notes,
+            wooOrderId: newR.wooOrderId || ex.wooOrderId,
+            wooOrderSyncedAt: newR.wooOrderSyncedAt || ex.wooOrderSyncedAt,
+          });
+        } else {
+          regMap.set(newR.id, newR);
+        }
+      });
+
+      const updatedRegs = Array.from(regMap.values());
+      const maxSeq = updatedRegs.reduce((acc, r) => {
+        const parts = String(r.code || '').split('-');
+        const num = parseInt(parts[parts.length - 1], 10);
+        return !isNaN(num) ? Math.max(acc, num) : acc;
+      }, state.nextRegSeq || 100);
+
+      return {
+        ...state,
+        nextRegSeq: Math.max(state.nextRegSeq || 0, maxSeq),
+        classes: Array.from(classMap.values()),
+        students: Array.from(studentMap.values()),
+        registrations: updatedRegs,
       };
     }
 

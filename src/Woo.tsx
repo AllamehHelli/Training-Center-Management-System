@@ -8,6 +8,7 @@ import { useAppStore, hasWooCredentials } from './store';
 import { toPersianDigits, getTodayJalali, formatToman, validateNationalId, toEnglishDigits } from './utils';
 import { ClassRoom, Student, Registration } from './types';
 import { useToast, Field, InfoTooltip } from './ui';
+import { WooCsvImportModal } from './components/WooCsvImportModal';
 import {
   IconWoo,
   IconCheck,
@@ -16,6 +17,7 @@ import {
   IconEyeOff,
   IconRefresh,
 } from './icons';
+import { FileSpreadsheet, UploadCloud } from 'lucide-react';
 
 /**
  * CR-3: deterministic mock order feed. A real WooCommerce integration fetches
@@ -87,6 +89,7 @@ export const Woo: React.FC = () => {
   const [isTesting, setIsTesting] = useState(false);
   const [isSyncingProducts, setIsSyncingProducts] = useState(false);
   const [isSyncingOrders, setIsSyncingOrders] = useState(false);
+  const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
 
   // Save Settings
   const handleSaveSettings = (e: React.FormEvent) => {
@@ -587,8 +590,30 @@ export const Woo: React.FC = () => {
             <div>
               <h3 className="text-lg font-heading text-[#0A3528]">عملیات همگام‌سازی و انتقال داده</h3>
               <p className="text-xs text-slate-500">
-                انتقال محصولات فروشگاه به کلاس‌های آموزشگاه و دریافت سفارش‌های جدید ثبت‌نام
+                انتقال مستقیم از طریق فایل خروجی روزانه ووکامرس یا اتصال خودکار از طریق وب‌سرویس
               </p>
+            </div>
+
+            {/* Direct CSV Upload Banner (Phase 1 recommended) */}
+            <div className="p-4 bg-indigo-50/60 rounded-xl border border-indigo-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <FileSpreadsheet size={20} />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-indigo-950">روش اول (پیشنهادی): بارگذاری مستقیم فایل خروجی ووکامرس</h4>
+                  <p className="text-xs text-indigo-700 leading-relaxed">
+                    تحلیل ۴ وضعیت مالی، تفکیک خودکار دوره‌ها با خط تیره (-) و ثبت پرونده‌ها بدون ریسک تکرار
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCsvModalOpen(true)}
+                className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer"
+              >
+                بارگذاری و تحلیل فایل CSV
+              </button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
@@ -683,6 +708,12 @@ export const Woo: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* WooCommerce CSV Sync Modal */}
+      <WooCsvImportModal
+        isOpen={isCsvModalOpen}
+        onClose={() => setIsCsvModalOpen(false)}
+      />
     </div>
   );
 };

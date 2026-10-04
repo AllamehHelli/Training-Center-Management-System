@@ -18,6 +18,7 @@ import { DateRangePicker, JalaliDateRange } from './DateRangePicker';
 import { ProgressBar, useToast, Avatar, InfoTooltip } from './ui';
 import { PaymentDateModal } from './components/PaymentDateModal';
 import { StudentDossierModal } from './components/StudentDossierModal';
+import { WooCsvImportModal } from './components/WooCsvImportModal';
 import {
   IconFinance,
   IconAlert,
@@ -26,7 +27,7 @@ import {
   IconCalendar,
   IconRefresh,
 } from './icons';
-import { FileText, UserCheck, Phone, CreditCard } from 'lucide-react';
+import { FileText, UserCheck, Phone, CreditCard, FileSpreadsheet } from 'lucide-react';
 import { PaymentPlanManager } from './PaymentPlanManager';
 
 interface FlatInstallment {
@@ -64,6 +65,7 @@ export const Finance: React.FC<FinanceProps> = ({ initialFilters, onNavigate }) 
   const [dateRange, setDateRange] = useState<JalaliDateRange>({ preset: 'all' });
   const [paymentModalItem, setPaymentModalItem] = useState<FlatInstallment | null>(null);
   const [selectedDossier, setSelectedDossier] = useState<{ studentId: string; regId?: string } | null>(null);
+  const [isWooImportOpen, setIsWooImportOpen] = useState(false);
 
 
   // Flatten all installments across active registrations
@@ -225,31 +227,43 @@ export const Finance: React.FC<FinanceProps> = ({ initialFilters, onNavigate }) 
           </p>
         </div>
 
-        {/* Tab switcher */}
-        <div className="flex items-center gap-1 p-1 bg-neutral-100/80 rounded-full shrink-0">
+        {/* Actions & Tab switcher */}
+        <div className="flex flex-wrap items-center gap-2.5">
           <button
             type="button"
-            onClick={() => setActiveFinanceTab('ledger')}
-            className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-full transition-all ${
-              activeFinanceTab === 'ledger'
-                ? 'bg-white text-neutral-900 shadow-2xs'
-                : 'text-neutral-500 hover:text-neutral-900'
-            }`}
+            onClick={() => setIsWooImportOpen(true)}
+            className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200/80 rounded-full hover:bg-indigo-100 transition-colors shadow-2xs"
+            title="همگام‌سازی و تحلیل سفارشات و اقساط فایل خروجی ووکامرس"
           >
-            <IconFinance size={14} className={activeFinanceTab === 'ledger' ? 'text-neutral-900' : 'text-neutral-400'} />
-            <span>دفترچه اقساط</span>
+            <FileSpreadsheet size={14} className="text-indigo-600" />
+            <span>ورود سفارشات ووکامرس (CSV)</span>
           </button>
-          <button
-            type="button"
-            onClick={() => setActiveFinanceTab('plans')}
-            className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-full transition-all ${
-              activeFinanceTab === 'plans'
-                ? 'bg-white text-neutral-900 shadow-2xs'
-                : 'text-neutral-500 hover:text-neutral-900'
-            }`}
-          >
-            <span>پلن‌های پرداخت</span>
-          </button>
+
+          <div className="flex items-center gap-1 p-1 bg-neutral-100/80 rounded-full shrink-0">
+            <button
+              type="button"
+              onClick={() => setActiveFinanceTab('ledger')}
+              className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-full transition-all ${
+                activeFinanceTab === 'ledger'
+                  ? 'bg-white text-neutral-900 shadow-2xs'
+                  : 'text-neutral-500 hover:text-neutral-900'
+              }`}
+            >
+              <IconFinance size={14} className={activeFinanceTab === 'ledger' ? 'text-neutral-900' : 'text-neutral-400'} />
+              <span>دفترچه اقساط</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveFinanceTab('plans')}
+              className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-full transition-all ${
+                activeFinanceTab === 'plans'
+                  ? 'bg-white text-neutral-900 shadow-2xs'
+                  : 'text-neutral-500 hover:text-neutral-900'
+              }`}
+            >
+              <span>پلن‌های پرداخت</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -687,6 +701,12 @@ export const Finance: React.FC<FinanceProps> = ({ initialFilters, onNavigate }) 
           onNavigate={onNavigate}
         />
       )}
+
+      {/* WooCommerce CSV Sync Modal */}
+      <WooCsvImportModal
+        isOpen={isWooImportOpen}
+        onClose={() => setIsWooImportOpen(false)}
+      />
     </div>
   );
 };

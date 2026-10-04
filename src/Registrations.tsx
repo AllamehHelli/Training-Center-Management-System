@@ -37,7 +37,8 @@ import { LogoHelli } from './Logo';
 import { JalaliDatePicker } from './JalaliDatePicker';
 import { PaymentDateModal } from './components/PaymentDateModal';
 import { StudentDossierModal } from './components/StudentDossierModal';
-import { GraduationCap, PlusCircle } from 'lucide-react';
+import { WooCsvImportModal } from './components/WooCsvImportModal';
+import { GraduationCap, PlusCircle, FileSpreadsheet } from 'lucide-react';
 
 interface RegistrationsProps {
   /** ME-3: filters carried over from the dashboard "view all" action. */
@@ -107,6 +108,7 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters, on
   } | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [selectedDossierRegId, setSelectedDossierRegId] = useState<string | null>(null);
+  const [isWooImportOpen, setIsWooImportOpen] = useState(false);
 
   // Form State for New Registration
   const { paymentPlans } = useFieldSettings();
@@ -409,6 +411,16 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters, on
           </p>
         </div>
         <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => setIsWooImportOpen(true)}
+            disabled={isViewingArchived}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200/80 rounded-full hover:bg-indigo-100 transition-colors shadow-2xs"
+            title="همگام‌سازی و تحلیل سفارشات و اقساط فایل خروجی ووکامرس"
+          >
+            <FileSpreadsheet size={14} className="text-indigo-600" />
+            <span>ورود سفارشات ووکامرس (CSV)</span>
+          </button>
           <button
             type="button"
             onClick={handleExportCSV}
@@ -1364,6 +1376,12 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters, on
           onNavigate={onNavigate}
         />
       )}
+
+      {/* WooCommerce CSV Sync Modal */}
+      <WooCsvImportModal
+        isOpen={isWooImportOpen}
+        onClose={() => setIsWooImportOpen(false)}
+      />
     </div>
   );
 };
