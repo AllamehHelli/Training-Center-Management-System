@@ -448,19 +448,26 @@ function getAuthUser($pdo, $secret) {
     return null;
 }
 
-const ROLE_MATRIX = [
-    'read'    => ['admin', 'manager', 'staff', 'finance'],
-    'write'   => ['admin', 'manager', 'staff'],
-    'finance' => ['admin', 'manager', 'finance'],
-    'years'   => ['admin', 'manager'],
-    'admin'   => ['admin'],
-];
-
 function requirePerm($user, $permission) {
-    global $ROLE_MATRIX;
-    $allowedRoles = $ROLE_MATRIX[$permission] ?? [];
-    if (!in_array($user['role'] ?? '', $allowedRoles, true)) {
-        jsonResp(['error' => 'forbidden', 'message' => 'شما دسترسی مجاز برای این عملیات را ندارید.'], 403);
+    $role = strtolower(trim($user['role'] ?? ''));
+    if ($role === 'admin') {
+        return; // مدیر ارشد سامانه به تمام بخش‌ها و عملیات دسترسی نامحدود دارد
+    }
+
+    $roleMatrix = [
+        'read'    => ['admin', 'manager', 'staff', 'finance'],
+        'write'   => ['admin', 'manager', 'staff'],
+        'finance' => ['admin', 'manager', 'finance'],
+        'years'   => ['admin', 'manager'],
+        'admin'   => ['admin'],
+    ];
+
+    $allowedRoles = $roleMatrix[$permission] ?? [];
+    if (!in_array($role, $allowedRoles, true)) {
+        jsonResp([
+            'error' => 'forbidden',
+            'message' => 'شما دسترسی مجاز برای این عملیات را ندارید.'
+        ], 403);
     }
 }
 

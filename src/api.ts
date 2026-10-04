@@ -20,7 +20,8 @@ async function req<T = unknown>(path: string, init: RequestInit = {}): Promise<T
   let body: any = null;
   try { body = await res.json(); } catch { /* non-JSON */ }
   if (!res.ok) {
-    const err: Error & { status?: number; code?: string } = new Error(body?.error || `HTTP ${res.status}`);
+    const errMsg = body?.message || body?.error || `HTTP ${res.status}`;
+    const err: Error & { status?: number; code?: string } = new Error(errMsg);
     err.status = res.status; err.code = body?.code;
     throw err;
   }
