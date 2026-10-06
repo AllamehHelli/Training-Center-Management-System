@@ -163,10 +163,8 @@ export const SystemLogModal: React.FC<Props> = ({ isOpen, onClose, onRestoreFive
   };
 
   const handleClearLogs = () => {
-    if (window.confirm('آیا از پاکسازی تمام لاگ‌های ثبت‌شده در این مرورگر اطمینان دارید؟')) {
-      logger.clear();
-      showToast('لاگ‌ها با موفقیت پاکسازی شدند.', 'info');
-    }
+    logger.clear();
+    showToast('تمام لاگ‌های سیستم با موفقیت پاکسازی شدند.', 'info');
   };
 
   const handleLoadSamples = async () => {

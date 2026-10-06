@@ -139,8 +139,54 @@ export async function syncAction(a: { type: string; payload?: any }): Promise<vo
         await serverApi.del(`/students/${a.payload.id ?? a.payload}`);
         break;
       case 'BULK_ADD_STUDENTS':
-        for (const s of a.payload) await serverApi.post('/students', s);
+        for (const s of a.payload) {
+          try {
+            await serverApi.post('/students', s);
+          } catch (err: any) {
+            // اگر قبلاً ثبت شده بود، به‌روزرسانی می‌کنیم
+            if (err?.status === 409 || String(err?.message || '').includes('تکراری')) {
+              try { await serverApi.put(`/students/${s.id}`, s); } catch {}
+            }
+          }
+        }
         break;
+      case 'UPSERT_WOO_SYNC_DATA': {
+        const { students: uStudents, classes: uClasses, registrations: uRegs } = a.payload;
+        if (Array.isArray(uStudents)) {
+          for (const s of uStudents) {
+            try {
+              await serverApi.post('/students', s);
+            } catch (err: any) {
+              if (err?.status === 409 || String(err?.message || '').includes('تکراری')) {
+                try { await serverApi.put(`/students/${s.id}`, s); } catch {}
+              }
+            }
+          }
+        }
+        if (Array.isArray(uClasses)) {
+          for (const c of uClasses) {
+            try {
+              await serverApi.post('/classes', c);
+            } catch (err: any) {
+              if (err?.status === 409 || String(err?.message || '').includes('تکراری')) {
+                try { await serverApi.put(`/classes/${c.id}`, c); } catch {}
+              }
+            }
+          }
+        }
+        if (Array.isArray(uRegs)) {
+          for (const r of uRegs) {
+            try {
+              await serverApi.post('/registrations', r);
+            } catch (err: any) {
+              if (err?.status === 409 || String(err?.message || '').includes('تکراری')) {
+                try { await serverApi.put(`/registrations/${r.id}`, r); } catch {}
+              }
+            }
+          }
+        }
+        break;
+      }
       case 'ADD_CLASS':
         await serverApi.post('/classes', a.payload);
         break;

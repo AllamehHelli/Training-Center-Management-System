@@ -35,9 +35,10 @@ import {
   IconAlert,
   IconClose,
 } from './icons';
-import { HeartHandshake, UserCheck, Sparkles, Filter, Users, GraduationCap, CreditCard, PlusCircle } from 'lucide-react';
+import { HeartHandshake, UserCheck, Sparkles, Filter, Users, GraduationCap, CreditCard, PlusCircle, FileSpreadsheet } from 'lucide-react';
 import { LogoHelli } from './Logo';
 import { StudentDossierModal } from './components/StudentDossierModal';
+import { WooCsvImportModal } from './components/WooCsvImportModal';
 
 export interface StudentsProps {
   initialFilters?: {
@@ -92,6 +93,7 @@ export const Students: React.FC<StudentsProps> = ({ initialFilters }) => {
   const [dossierStudent, setDossierStudent] = useState<Student | null>(null);
   const [dossierInitialMode, setDossierInitialMode] = useState<'educational' | 'financial'>('educational');
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [isWooImportOpen, setIsWooImportOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   // Quick Assign Counselor Modal State
@@ -129,12 +131,12 @@ export const Students: React.FC<StudentsProps> = ({ initialFilters }) => {
     if (!searchTerm) return true;
 
     const term = searchTerm.trim().toLowerCase();
-    const fullName = `${student.firstName} ${student.lastName}`.toLowerCase();
-    const nid = student.nationalId.toLowerCase();
-    const school = student.school.toLowerCase();
+    const fullName = `${student.firstName || ''} ${student.lastName || ''}`.toLowerCase();
+    const nid = (student.nationalId || '').toLowerCase();
+    const school = (student.school || '').toLowerCase();
     const cName = (student.counselorName || '').toLowerCase();
-    const matchesPhone = student.phones.some((p) =>
-      p.number.includes(toEnglishDigits(term))
+    const matchesPhone = (student.phones || []).some((p) =>
+      p && p.number ? p.number.includes(toEnglishDigits(term)) : false
     );
 
     return fullName.includes(term) || nid.includes(term) || school.includes(term) || cName.includes(term) || matchesPhone;
@@ -457,6 +459,15 @@ export const Students: React.FC<StudentsProps> = ({ initialFilters }) => {
           >
             <IconDownload size={14} />
             <span>خروجی اکسل</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsWooImportOpen(true)}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200/80 rounded-full hover:bg-indigo-100 transition-colors shadow-2xs"
+            title="همگام‌سازی و تحلیل سفارشات و فراگیران از فایل CSV ووکامرس"
+          >
+            <FileSpreadsheet size={14} className="text-indigo-600" />
+            <span>ورود از فایل ووکامرس</span>
           </button>
           <button
             type="button"
@@ -1328,6 +1339,12 @@ export const Students: React.FC<StudentsProps> = ({ initialFilters }) => {
         description="آیا از حذف این پرونده اطمینان دارید؟ تمام سوابق ثبت‌نام و اقساط مربوط به این دانش‌آموز نیز حذف خواهند شد."
         confirmText="بله، حذف پرونده"
         cancelText="انصراف"
+      />
+
+      {/* WooCommerce CSV Sync Modal */}
+      <WooCsvImportModal
+        isOpen={isWooImportOpen}
+        onClose={() => setIsWooImportOpen(false)}
       />
     </div>
   );

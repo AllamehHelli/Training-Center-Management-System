@@ -213,21 +213,44 @@ function normalizeHeader(h: string): string {
     .replace(/\s+/g, ' ');
 }
 
-const HEADER_ALIASES: Record<string, keyof Omit<StudentFormInput, 'phones'> | 'phone'> = {
+const HEADER_ALIASES: Record<string, keyof Omit<StudentFormInput, 'phones'> | 'phone' | 'fullName'> = {
   'نام': 'firstName',
   'نام کوچک': 'firstName',
   'نام خانوادگی': 'lastName',
+  'نام و خانوادگی': 'fullName',
+  'نام کامل': 'fullName',
+  'نام دانش‌آموز': 'fullName',
+  'نام دانش آموز': 'fullName',
+  'دانش‌آموز': 'fullName',
+  'دانش آموز': 'fullName',
+  'billing_name': 'fullName',
+  'name': 'fullName',
   'نام پدر': 'fatherName',
+  'father_name': 'fatherName',
   'کد ملی': 'nationalId',
+  'کدملی': 'nationalId',
+  'شماره ملی': 'nationalId',
+  'کد ملی دانش آموز': 'nationalId',
+  'national_id': 'nationalId',
+  'nationalid': 'nationalId',
+  'nid': 'nationalId',
   'پایه': 'grade',
   'پایه تحصیلی': 'grade',
+  'grade': 'grade',
   'معدل': 'gpa',
+  'gpa': 'gpa',
   'مدرسه': 'school',
   'نام مدرسه': 'school',
+  'school': 'school',
   'شماره همراه': 'phone',
   'موبایل': 'phone',
   'شماره موبایل': 'phone',
   'تلفن همراه': 'phone',
+  'تلفن': 'phone',
+  'همراه': 'phone',
+  'phone': 'phone',
+  'mobile': 'phone',
+  'billing_phone': 'phone',
 };
 
 /**
@@ -275,25 +298,21 @@ export function parseAndValidateBulkCSV(
 
   // Map header names -> column indexes (tolerant to ordering & aliases)
   const header = rows[0].map(normalizeHeader);
-  const colIndex: Partial<Record<keyof Omit<StudentFormInput, 'phones'> | 'phone', number>> = {};
+  const colIndex: Partial<Record<keyof Omit<StudentFormInput, 'phones'> | 'phone' | 'fullName', number>> = {};
   header.forEach((h, idx) => {
     const key = HEADER_ALIASES[h];
     if (key && colIndex[key] === undefined) colIndex[key] = idx;
   });
 
-  const requiredCols: Array<keyof Omit<StudentFormInput, 'phones'>> = [
-    'firstName',
-    'lastName',
-    'nationalId',
-    'grade',
-  ];
-  const missing = requiredCols.filter((c) => colIndex[c] === undefined);
-  if (missing.includes('firstName') || missing.includes('lastName')) {
-    report.fileErrors.push('سطر عنوان فایل باید حداقل ستون‌های «نام» و «نام خانوادگی» را داشته باشد.');
+  const hasSeparateNames = colIndex['firstName'] !== undefined && colIndex['lastName'] !== undefined;
+  const hasFullName = colIndex['fullName'] !== undefined;
+
+  if (!hasSeparateNames && !hasFullName) {
+    report.fileErrors.push('سطر عنوان فایل باید حداقل ستون‌های «نام» و «نام خانوادگی» (یا «نام و خانوادگی») را داشته باشد.');
     return report;
   }
   if (colIndex['phone'] === undefined) {
-    report.fileErrors.push('ستون «شماره همراه» در سطر عنوان فایل یافت نشد.');
+    report.fileErrors.push('ستون «شماره همراه» یا «موبایل» در سطر عنوان فایل یافت نشد.');
     return report;
   }
 
@@ -310,14 +329,31 @@ export function parseAndValidateBulkCSV(
     const lineNo = idx + 2; // +1 for 0-based, +1 because the header occupies line 1
     report.totalDataRows += 1;
 
+    let firstName = cell(row, 'firstName');
+    let lastName = cell(row, 'lastName');
+
+    if ((!firstName || !lastName) && hasFullName) {
+      const full = cell(row, 'fullName');
+      if (full) {
+        const parts = full.split(/\s+/).filter(Boolean);
+        if (parts.length === 1) {
+          firstName = parts[0];
+          lastName = '';
+        } else if (parts.length >= 2) {
+          firstName = parts[0];
+          lastName = parts.slice(1).join(' ');
+        }
+      }
+    }
+
     const input: StudentFormInput = {
-      firstName: cell(row, 'firstName'),
-      lastName: cell(row, 'lastName'),
+      firstName,
+      lastName,
       fatherName: cell(row, 'fatherName'),
       nationalId: cell(row, 'nationalId'),
-      grade: cell(row, 'grade'),
-      gpa: cell(row, 'gpa'),
-      school: cell(row, 'school'),
+      grade: cell(row, 'grade') || 'هفتم',
+      gpa: cell(row, 'gpa') || '20.00',
+      school: cell(row, 'school') || 'تیزهوشان',
       phones: [{ id: `p-bulk-${lineNo}`, label: 'همراه', number: cell(row, 'phone') }],
     };
 

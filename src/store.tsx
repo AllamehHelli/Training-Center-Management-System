@@ -172,6 +172,7 @@ export const MUTATING_ACTION_TYPES: ReadonlySet<AppAction['type']> = new Set<App
   // CR-3: WooCommerce order sync creates students/registrations too, so it
   // must be blocked while an archived year is being viewed.
   'SYNC_WOO_ORDERS',
+  'UPSERT_WOO_SYNC_DATA',
 ]);
 
 export const ARCHIVED_READONLY_MESSAGE =
@@ -280,8 +281,29 @@ export type AppAction =
 
 
 function appReducer(state: AppState, action: AppAction): AppState {
-  // Server truth wins wholesale on hydrate (login / refresh).
-  if (action.type === 'HYDRATE_FROM_SERVER') return action.payload;
+  // ادغام هوشمند هنگام بارگذاری از سرور: حفظ دانش‌آموزان و رکوردهای موجود محلی
+  if (action.type === 'HYDRATE_FROM_SERVER') {
+    const incomingStudents = action.payload.students || [];
+    const localStudents = state.students || [];
+    const studentMap = new Map<string, Student>();
+
+    // ابتدا دانش‌آموزان محلی ثبت می‌شوند
+    localStudents.forEach((s) => studentMap.set(s.id, s));
+    // سپس داده‌های دریافتی از سرور ادغام می‌شوند
+    incomingStudents.forEach((s) => {
+      const existing = studentMap.get(s.id) || (s.nationalId ? Array.from(studentMap.values()).find(st => st.nationalId === s.nationalId) : undefined);
+      if (existing) {
+        studentMap.set(existing.id, { ...existing, ...s });
+      } else {
+        studentMap.set(s.id, s);
+      }
+    });
+
+    return {
+      ...action.payload,
+      students: Array.from(studentMap.values()),
+    };
+  }
   // ------------------------------------------------------------------
   // Tracking-code issuance (global uniqueness fix).
   //
@@ -314,24 +336,51 @@ function appReducer(state: AppState, action: AppAction): AppState {
   };
 
   switch (action.type) {
-    case 'ADD_STUDENT':
-      return { ...state, students: [action.payload, ...state.students] };
+    case 'ADD_STUDENT': {
+      const newStudents = [action.payload, ...state.students];
+      const updatedYears = state.academicYears.map((y) =>
+        y.id === state.activeYearId && y.archivedData
+          ? { ...y, archivedData: { ...y.archivedData, students: newStudents } }
+          : y
+      );
+      return { ...state, students: newStudents, academicYears: updatedYears };
+    }
 
-    case 'UPDATE_STUDENT':
+    case 'UPDATE_STUDENT': {
+      const updated = state.students.map((s) => (s.id === action.payload.id ? action.payload : s));
+      const updatedYears = state.academicYears.map((y) =>
+        y.id === state.activeYearId && y.archivedData
+          ? { ...y, archivedData: { ...y.archivedData, students: updated } }
+          : y
+      );
+      return { ...state, students: updated, academicYears: updatedYears };
+    }
+
+    case 'DELETE_STUDENT': {
+      const filtered = state.students.filter((s) => s.id !== action.payload);
+      const filteredRegs = state.registrations.filter((r) => r.studentId !== action.payload);
+      const updatedYears = state.academicYears.map((y) =>
+        y.id === state.activeYearId && y.archivedData
+          ? { ...y, archivedData: { ...y.archivedData, students: filtered, registrations: filteredRegs } }
+          : y
+      );
       return {
         ...state,
-        students: state.students.map((s) => (s.id === action.payload.id ? action.payload : s)),
+        students: filtered,
+        registrations: filteredRegs,
+        academicYears: updatedYears,
       };
+    }
 
-    case 'DELETE_STUDENT':
-      return {
-        ...state,
-        students: state.students.filter((s) => s.id !== action.payload),
-        registrations: state.registrations.filter((r) => r.studentId !== action.payload),
-      };
-
-    case 'BULK_ADD_STUDENTS':
-      return { ...state, students: [...action.payload, ...state.students] };
+    case 'BULK_ADD_STUDENTS': {
+      const newStudents = [...action.payload, ...state.students];
+      const updatedYears = state.academicYears.map((y) =>
+        y.id === state.activeYearId && y.archivedData
+          ? { ...y, archivedData: { ...y.archivedData, students: newStudents } }
+          : y
+      );
+      return { ...state, students: newStudents, academicYears: updatedYears };
+    }
 
     case 'ADD_CLASS':
       return { ...state, classes: [stampEnrolledCounts(action.payload, state), ...state.classes] };
@@ -626,11 +675,28 @@ function appReducer(state: AppState, action: AppAction): AppState {
         return !isNaN(num) ? Math.max(acc, num) : acc;
       }, state.nextRegSeq || 100);
 
+      const finalClasses = Array.from(classMap.values());
+      const finalStudents = Array.from(studentMap.values());
+      const updatedYears = state.academicYears.map((y) =>
+        y.id === state.activeYearId && y.archivedData
+          ? {
+              ...y,
+              archivedData: {
+                ...y.archivedData,
+                students: finalStudents,
+                classes: finalClasses,
+                registrations: updatedRegs,
+              },
+            }
+          : y
+      );
+
       return {
         ...state,
         nextRegSeq: Math.max(state.nextRegSeq || 0, maxSeq),
-        classes: Array.from(classMap.values()),
-        students: Array.from(studentMap.values()),
+        academicYears: updatedYears,
+        classes: finalClasses,
+        students: finalStudents,
         registrations: updatedRegs,
       };
     }
@@ -693,19 +759,20 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
       if (targetYearId === state.activeYearId) {
         // Restore the live dataset from the active year's own snapshot
-        // (falling back to empty collections only if never initialized).
+        // (falling back to current live dataset if never initialized or empty).
         const live: AcademicYearDataSnapshot = targetYear.archivedData || {
-          students: [],
-          classes: [],
-          registrations: [],
+          students: state.students,
+          classes: state.classes,
+          registrations: state.registrations,
         };
+        const safeStudents = (live.students && live.students.length > 0) ? live.students : state.students;
         return {
           ...state,
           academicYears: updatedYears,
           viewingYearId: targetYearId,
-          students: live.students || [],
-          classes: live.classes || [],
-          registrations: live.registrations || [],
+          students: safeStudents,
+          classes: (live.classes && live.classes.length > 0) ? live.classes : state.classes,
+          registrations: (live.registrations && live.registrations.length > 0) ? live.registrations : state.registrations,
         };
       }
 

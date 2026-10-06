@@ -1022,15 +1022,19 @@ export function migrateLegacyData(parsed: any): {
         phones = [{ id: `p-${s.id || idx}-mig`, label: 'همراه', number: rawPhone }];
       }
       return {
+        ...s,
         id: s.id || `std-${idx + 1}`,
         firstName: s.firstName || 'بدون نام',
-        lastName: s.lastName || 'نامشخص',
+        lastName: s.lastName !== undefined ? s.lastName : 'نامشخص',
         fatherName: s.fatherName || '',
         nationalId: s.nationalId || '0000000000',
         phones,
         grade: s.grade || 'هفتم',
         gpa: typeof s.gpa === 'number' ? s.gpa : 20.0,
         school: s.school || 'نامشخص',
+        birthDate: s.birthDate || undefined,
+        counselorId: s.counselorId || undefined,
+        counselorName: s.counselorName || undefined,
         createdAt: s.createdAt || getTodayJalali(),
       };
     });
