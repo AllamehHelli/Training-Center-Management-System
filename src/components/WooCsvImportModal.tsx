@@ -472,7 +472,7 @@ export const WooCsvImportModal: React.FC<Props> = ({ isOpen, onClose, onSuccess 
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {filteredRows.slice(0, 50).map((r) => (
+                      {filteredRows.slice(0, 100).map((r) => (
                         <tr key={r.orderId} className="hover:bg-slate-50/70 transition-colors">
                           <td className="px-4 py-2 font-mono font-medium text-indigo-700">
                             #{toPersianDigits(r.orderId)}
@@ -515,9 +515,9 @@ export const WooCsvImportModal: React.FC<Props> = ({ isOpen, onClose, onSuccess 
                     </tbody>
                   </table>
                 </div>
-                {filteredRows.length > 50 && (
+                {filteredRows.length > 100 && (
                   <div className="p-2.5 bg-slate-50 border-t border-slate-200 text-center text-[11px] text-slate-500 font-medium">
-                    نمایش ۵۰ مورد از {toPersianDigits(filteredRows.length)} سطر فیلترشده (همه موارد در صورت تایید اعمال خواهند شد).
+                    نمایش ۱۰۰ مورد از {toPersianDigits(filteredRows.length)} سطر پردازش‌شده (تمامی سفارش‌ها پس از اعمال در سامانه ثبت خواهند شد).
                   </div>
                 )}
               </div>

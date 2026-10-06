@@ -377,11 +377,12 @@ export const Students: React.FC<StudentsProps> = ({ initialFilters }) => {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (event) => {
-      const content = event.target?.result as string;
+      const content = String(event.target?.result || '');
       setBulkText(content);
       runBulkValidation(content);
     };
-    reader.readAsText(file);
+    reader.readAsText(file, 'utf-8');
+    e.target.value = '';
   };
 
   const bulkValidRows = bulkReport?.results.filter((r) => r.errors.length === 0) ?? [];

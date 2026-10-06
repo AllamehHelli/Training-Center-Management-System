@@ -219,9 +219,10 @@ export function parseWooCommerceOrdersCsv(
   existingRegistrations: Registration[],
   existingClasses: ClassRoom[]
 ): WooSyncPreviewResult {
-  const parsed = Papa.parse<Record<string, any>>(csvText, {
+  const cleanedText = String(csvText || '').replace(/^\uFEFF/, '').trim();
+  const parsed = Papa.parse<Record<string, any>>(cleanedText, {
     header: true,
-    skipEmptyLines: true,
+    skipEmptyLines: 'greedy',
     transformHeader: (h) => h.replace(/^["'\s]+|["'\s]+$/g, '').trim(),
   });
 
@@ -270,9 +271,22 @@ export function parseWooCommerceOrdersCsv(
   const enrollmentMap = new Map<string, OrderItemRecord[]>(); // key: `${studentKey}:::${courseName}`
 
   parsed.data.forEach((row, idx) => {
-    // خواندن شماره سفارش
-    const orderId = toEnglishDigits(String(row['شماره سفارش'] || row['order_id'] || row['id'] || idx + 1)).trim();
-    if (!orderId) return;
+    // بررسی عدم وجود ردیف‌های پوچ و خالی به جا مانده از اکسل (Ghost Rows)
+    const hasAnyContent = Object.values(row).some((v) => String(v ?? '').trim() !== '');
+    if (!hasAnyContent) return;
+
+    const rawOrderId = toEnglishDigits(String(row['شماره سفارش'] || row['order_id'] || row['id'] || '')).trim();
+    const fullNameRaw = String(row['نام و خانوادگی'] || row['billing_name'] || row['name'] || '').trim();
+    const mobileRaw = toEnglishDigits(String(row['موبایل'] || row['billing_phone'] || row['phone'] || '')).trim();
+    const nidRaw = toEnglishDigits(String(row['کد ملی'] || row['national_id'] || row['nid'] || '')).trim();
+    const rawItems = String(row['اقلام سفارش'] || row['items'] || row['courses'] || '').trim();
+
+    // اگر ردیف فاقد هرگونه شناسه، نام، موبایل، کد ملی و عنوان سفارش باشد، کاملاً پوچ است و باید رد شود
+    if (!rawOrderId && !fullNameRaw && !mobileRaw && !nidRaw && !rawItems) {
+      return;
+    }
+
+    const orderId = rawOrderId || String(idx + 1);
 
     const orderDateRaw = String(row['تاریخ سفارش'] || row['order_date'] || row['date'] || '').trim();
     const jalaliDate = orderDateRaw.split(/\s+/)[0] || '';
@@ -282,27 +296,24 @@ export function parseWooCommerceOrdersCsv(
     const amountStr = toEnglishDigits(String(row['مبلغ کل'] || row['total'] || row['amount'] || 0)).replace(/[^\d.-]/g, '');
     const totalAmount = Math.max(0, parseInt(amountStr, 10) || 0);
 
-    const fullNameRaw = String(row['نام و خانوادگی'] || row['billing_name'] || row['name'] || '').trim();
-    const fullName = fullNameRaw || 'دانش‌آموز';
-    const mobileRaw = toEnglishDigits(String(row['موبایل'] || row['billing_phone'] || row['phone'] || '')).trim();
+    const fullName = fullNameRaw || (rawOrderId ? `فراگیر سفارش ${rawOrderId}` : `دانش‌آموز ${idx + 1}`);
     const cleanMobile = mobileRaw.replace(/\D/g, '');
 
-    const nidRaw = toEnglishDigits(String(row['کد ملی'] || row['national_id'] || row['nid'] || '')).trim();
     let cleanNid = nidRaw.replace(/\D/g, '');
     if (cleanNid.length > 0 && cleanNid.length < 10 && cleanNid.length >= 8) {
       cleanNid = cleanNid.padStart(10, '0');
     }
 
-    // ایجاد کلید یکتا برای دانش‌آموز: ترجیحاً کد ملی؛ اگر نبود، نام نرمال‌شده
-    const studentUniqueKey = cleanNid || (normalizeFullName(fullName) ? `name-${normalizeFullName(fullName)}` : `row-${orderId}`);
+    // ایجاد کلید یکتا برای دانش‌آموز: ترجیحاً کد ملی؛ اگر نبود، نام نرمال‌شده یا شناسه سفارش اختصاصی
+    const studentUniqueKey = cleanNid || (fullNameRaw && normalizeFullName(fullNameRaw) ? `name-${normalizeFullName(fullNameRaw)}` : `order-${orderId}`);
 
     const gradeRaw = String(row['پایه تحصیلی'] || row['grade'] || '').trim();
     const normalizedGrade = normalizeGrade(gradeRaw);
     const birthDateRaw = toEnglishDigits(String(row['تاریخ تولد'] || row['birth_date'] || '')).trim();
     const birthDate = birthDateRaw !== '-' ? birthDateRaw : '';
 
-    const rawItems = String(row['اقلام سفارش'] || row['items'] || row['courses'] || 'دوره آموزشی').trim();
-    const courses = splitOrderItems(rawItems);
+    const effectiveItems = rawItems || 'دوره آموزشی';
+    const courses = splitOrderItems(effectiveItems);
 
     // محاسبه آمار مالی
     summary.totalOrdersCount++;
@@ -336,7 +347,7 @@ export function parseWooCommerceOrdersCsv(
       gradeRaw,
       normalizedGrade,
       birthDate,
-      rawItems,
+      rawItems: effectiveItems,
       courses,
     });
 

@@ -210,6 +210,8 @@ function normalizeHeader(h: string): string {
     .trim()
     .replace(/^\uFEFF/, '')
     .replace(/[\u200c]/g, ' ') // ZWNJ -> space
+    .replace(/[ي]/g, 'ی')
+    .replace(/[ك]/g, 'ک')
     .replace(/\s+/g, ' ');
 }
 
@@ -255,7 +257,7 @@ const HEADER_ALIASES: Record<string, keyof Omit<StudentFormInput, 'phones'> | 'p
 
 /**
  * Parse & validate a bulk CSV text WITHOUT committing anything.
- * Uses PapaParse so quoted values containing commas/newlines survive intact.
+ * Tolerant to Excel semicolons, tabs, and commas, and ignores blank trailing rows.
  */
 export function parseAndValidateBulkCSV(
   text: string,
@@ -271,14 +273,14 @@ export function parseAndValidateBulkCSV(
     fileErrors: [],
   };
 
-  if (!text || !text.trim()) {
+  const cleanedText = String(text || '').replace(/^\uFEFF/, '').trim();
+  if (!cleanedText) {
     report.fileErrors.push('متن فایل خالی است.');
     return report;
   }
 
-  const parsed = Papa.parse<string[]>(text.trim(), {
+  const parsed = Papa.parse<string[]>(cleanedText, {
     skipEmptyLines: 'greedy',
-    delimiter: ',',
   });
 
   if (parsed.errors.length > 0) {
@@ -287,17 +289,17 @@ export function parseAndValidateBulkCSV(
     }
   }
 
-  const rows = (parsed.data as unknown as string[][]).filter(
+  const rawRows = (parsed.data as unknown as string[][]).filter(
     (r) => Array.isArray(r) && r.some((c) => String(c ?? '').trim() !== '')
   );
 
-  if (rows.length === 0) {
+  if (rawRows.length === 0) {
     report.fileErrors.push('هیچ ردیف داده‌ای در فایل یافت نشد.');
     return report;
   }
 
   // Map header names -> column indexes (tolerant to ordering & aliases)
-  const header = rows[0].map(normalizeHeader);
+  const header = rawRows[0].map(normalizeHeader);
   const colIndex: Partial<Record<keyof Omit<StudentFormInput, 'phones'> | 'phone' | 'fullName', number>> = {};
   header.forEach((h, idx) => {
     const key = HEADER_ALIASES[h];
@@ -324,10 +326,9 @@ export function parseAndValidateBulkCSV(
   // Uniqueness pool: existing DB students + reserved ids supplied by caller
   const seenNids = new Set<string>(extraReservedNationalIds);
 
-  const dataRows = rows.slice(1);
+  const dataRows = rawRows.slice(1);
   dataRows.forEach((row, idx) => {
     const lineNo = idx + 2; // +1 for 0-based, +1 because the header occupies line 1
-    report.totalDataRows += 1;
 
     let firstName = cell(row, 'firstName');
     let lastName = cell(row, 'lastName');
@@ -346,15 +347,36 @@ export function parseAndValidateBulkCSV(
       }
     }
 
+    const fatherName = cell(row, 'fatherName');
+    const nationalId = cell(row, 'nationalId');
+    const phone = cell(row, 'phone');
+    const grade = cell(row, 'grade');
+    const gpa = cell(row, 'gpa');
+    const school = cell(row, 'school');
+
+    // جلوگیری از ثبت ردیف‌های پوچ و خالی اکسل (Ghost Rows)
+    const hasAnyIdentity = Boolean(
+      firstName.trim() ||
+      lastName.trim() ||
+      phone.trim() ||
+      nationalId.trim() ||
+      fatherName.trim()
+    );
+    if (!hasAnyIdentity) {
+      return; // ردیف خالی انتهای فایل را کاملاً رد کن
+    }
+
+    report.totalDataRows += 1;
+
     const input: StudentFormInput = {
       firstName,
       lastName,
-      fatherName: cell(row, 'fatherName'),
-      nationalId: cell(row, 'nationalId'),
-      grade: cell(row, 'grade') || 'هفتم',
-      gpa: cell(row, 'gpa') || '20.00',
-      school: cell(row, 'school') || 'تیزهوشان',
-      phones: [{ id: `p-bulk-${lineNo}`, label: 'همراه', number: cell(row, 'phone') }],
+      fatherName,
+      nationalId,
+      grade: grade || 'هفتم',
+      gpa: gpa || '20.00',
+      school: school || 'تیزهوشان',
+      phones: [{ id: `p-bulk-${lineNo}`, label: 'همراه', number: phone }],
     };
 
     // Same shared rules as the single-student form (HI-2 module), checked
@@ -379,7 +401,7 @@ export function parseAndValidateBulkCSV(
   });
 
   if (report.totalDataRows === 0) {
-    report.fileErrors.push('لطفاً حداقل یک ردیف داده وارد نمایید.');
+    report.fileErrors.push('هیچ ردیف معتبری حاوی مشخصات دانش‌آموز در فایل یافت نشد.');
   }
 
   return report;
