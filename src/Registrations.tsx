@@ -410,23 +410,23 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters, on
             فهرست پرونده‌های آموزشی و پیگیری اقساط دوره جاری آموزشگاه
           </p>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           <button
             type="button"
             onClick={() => setIsWooImportOpen(true)}
             disabled={isViewingArchived}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200/80 rounded-full hover:bg-indigo-100 transition-colors shadow-2xs"
+            className="h-8.5 px-3 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 hover:text-indigo-700 border border-slate-200/90 rounded-xl inline-flex items-center gap-1.5 transition-colors shadow-2xs whitespace-nowrap shrink-0 disabled:opacity-40"
             title="همگام‌سازی و تحلیل سفارشات و اقساط فایل خروجی ووکامرس"
           >
-            <FileSpreadsheet size={14} className="text-indigo-600" />
-            <span>ورود سفارشات ووکامرس (CSV)</span>
+            <FileSpreadsheet size={14} className="text-indigo-600 shrink-0" />
+            <span>ورود ووکامرس</span>
           </button>
           <button
             type="button"
             onClick={handleExportCSV}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-neutral-700 bg-white border border-neutral-200/80 rounded-full hover:bg-neutral-50 transition-colors shadow-2xs"
+            className="h-8.5 px-3 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 hover:text-slate-900 border border-slate-200/90 rounded-xl inline-flex items-center gap-1.5 transition-colors shadow-2xs whitespace-nowrap shrink-0"
           >
-            <IconDownload size={14} />
+            <IconDownload size={14} className="text-slate-500 shrink-0" />
             <span>خروجی اکسل</span>
           </button>
           <button
@@ -434,9 +434,9 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters, on
             onClick={openNewRegistration}
             disabled={isViewingArchived}
             title={isViewingArchived ? 'داده‌های بایگانی‌شده فقط‌خواندنی هستند' : undefined}
-            className="flex items-center gap-1.5 px-5 py-2 text-xs font-semibold text-white bg-neutral-900 rounded-full hover:bg-neutral-800 transition-colors shadow-xs disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-neutral-900"
+            className="h-8.5 px-3.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl inline-flex items-center gap-1.5 transition-all shadow-xs whitespace-nowrap shrink-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-slate-900"
           >
-            <IconPlus size={15} />
+            <IconPlus size={14} />
             <span>ثبت‌نام جدید</span>
           </button>
         </div>
@@ -704,10 +704,10 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters, on
                           <button
                             type="button"
                             onClick={() => setSelectedDossierRegId(reg.id)}
-                            className="px-2 py-1 bg-[#162E6E]/10 hover:bg-[#162E6E] text-[#162E6E] hover:text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                            className="h-7 px-2.5 bg-[#162E6E]/10 hover:bg-[#162E6E] text-[#162E6E] hover:text-white rounded-lg text-[11px] font-medium transition-colors inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
                             title="مشاهده پرونده آموزشی دانش‌آموز"
                           >
-                            <GraduationCap size={13} />
+                            <GraduationCap size={13} className="shrink-0" />
                             <span>پرونده آموزشی</span>
                           </button>
                         </div>

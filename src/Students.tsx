@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from './store';
 import { useFieldSettings } from './Settings';
 import {
@@ -35,7 +35,7 @@ import {
   IconAlert,
   IconClose,
 } from './icons';
-import { HeartHandshake, UserCheck, Sparkles, Filter, Users, GraduationCap, CreditCard, PlusCircle, FileSpreadsheet } from 'lucide-react';
+import { HeartHandshake, UserCheck, Sparkles, Filter, Users, GraduationCap, CreditCard, PlusCircle, FileSpreadsheet, ChevronDown } from 'lucide-react';
 import { LogoHelli } from './Logo';
 import { StudentDossierModal } from './components/StudentDossierModal';
 import { WooCsvImportModal } from './components/WooCsvImportModal';
@@ -94,7 +94,22 @@ export const Students: React.FC<StudentsProps> = ({ initialFilters }) => {
   const [dossierInitialMode, setDossierInitialMode] = useState<'educational' | 'financial'>('educational');
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [isWooImportOpen, setIsWooImportOpen] = useState(false);
+  const [isImportMenuOpen, setIsImportMenuOpen] = useState(false);
+  const importMenuRef = useRef<HTMLDivElement>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  // Close import dropdown on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (importMenuRef.current && !importMenuRef.current.contains(e.target as Node)) {
+        setIsImportMenuOpen(false);
+      }
+    };
+    if (isImportMenuOpen) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [isImportMenuOpen]);
 
   // Quick Assign Counselor Modal State
   const [quickAssignStudent, setQuickAssignStudent] = useState<Student | null>(null);
@@ -437,7 +452,8 @@ export const Students: React.FC<StudentsProps> = ({ initialFilters }) => {
             مشخصات هویتی، اطلاعات اولیا و شماره‌های تماس فراگیران
           </p>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+          {/* تخصیص مشاور - مینیمال */}
           <button
             type="button"
             onClick={() => {
@@ -446,43 +462,85 @@ export const Students: React.FC<StudentsProps> = ({ initialFilters }) => {
               setBulkAssignTargetCounselorId('');
               setIsBulkAssignModalOpen(true);
             }}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-teal-800 bg-teal-50 border border-teal-200/80 rounded-full hover:bg-teal-100 transition-colors shadow-2xs"
+            className="h-8.5 px-3 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 hover:text-teal-800 border border-slate-200/90 rounded-xl inline-flex items-center gap-1.5 transition-colors shadow-2xs whitespace-nowrap shrink-0"
             title="تخصیص گروهی دانش‌آموزان به مشاوران"
           >
-            <HeartHandshake size={14} className="text-teal-600" />
-            <span>تخصیص گروهی مشاور</span>
+            <HeartHandshake size={14} className="text-teal-600 shrink-0" />
+            <span>تخصیص مشاور</span>
           </button>
+
+          {/* خروجی اکسل - مینیمال */}
           <button
             type="button"
             onClick={handleExportCSV}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-neutral-700 bg-white border border-neutral-200/80 rounded-full hover:bg-neutral-50 transition-colors shadow-2xs"
+            className="h-8.5 px-3 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 hover:text-slate-900 border border-slate-200/90 rounded-xl inline-flex items-center gap-1.5 transition-colors shadow-2xs whitespace-nowrap shrink-0"
+            title="خروجی فایل اکسل از اطلاعات دانش‌آموزان"
           >
-            <IconDownload size={14} />
+            <IconDownload size={14} className="text-slate-500 shrink-0" />
             <span>خروجی اکسل</span>
           </button>
-          <button
-            type="button"
-            onClick={() => setIsWooImportOpen(true)}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200/80 rounded-full hover:bg-indigo-100 transition-colors shadow-2xs"
-            title="همگام‌سازی و تحلیل سفارشات و فراگیران از فایل CSV ووکامرس"
-          >
-            <FileSpreadsheet size={14} className="text-indigo-600" />
-            <span>ورود از فایل ووکامرس</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsBulkModalOpen(true)}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-neutral-700 bg-white border border-neutral-200/80 rounded-full hover:bg-neutral-50 transition-colors shadow-2xs"
-          >
-            <IconUpload size={14} />
-            <span>ورود دسته‌جمعی از فایل</span>
-          </button>
+
+          {/* منوی یکپارچه و مینیمال ورود اطلاعات (Import Menu) */}
+          <div className="relative" ref={importMenuRef}>
+            <button
+              type="button"
+              onClick={() => setIsImportMenuOpen((prev) => !prev)}
+              className="h-8.5 px-3 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 hover:text-slate-900 border border-slate-200/90 rounded-xl inline-flex items-center gap-1.5 transition-colors shadow-2xs whitespace-nowrap shrink-0"
+              title="ورود اطلاعات از فایل اکسل یا سفارشات ووکامرس"
+            >
+              <IconUpload size={14} className="text-slate-500 shrink-0" />
+              <span>ورود فایل</span>
+              <ChevronDown
+                size={12}
+                className={`text-slate-400 transition-transform duration-150 ${isImportMenuOpen ? 'rotate-180' : ''}`}
+              />
+            </button>
+
+            {isImportMenuOpen && (
+              <div className="absolute left-0 mt-1.5 w-64 bg-white rounded-2xl shadow-xl border border-slate-100 p-1.5 z-30 animate-in fade-in zoom-in-95 duration-100 text-right">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsImportMenuOpen(false);
+                    setIsBulkModalOpen(true);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-right rounded-xl text-xs text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
+                    <IconUpload size={14} />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-slate-800">ورود دسته‌جمعی از فایل اکسل</div>
+                    <div className="text-[10px] text-slate-400">فرمت استاندارد (کد ملی، پایه، شماره‌ها)</div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsImportMenuOpen(false);
+                    setIsWooImportOpen(true);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-right rounded-xl text-xs text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors border-t border-slate-50 mt-1"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center shrink-0">
+                    <FileSpreadsheet size={14} />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-slate-800">ورود از فایل ووکامرس</div>
+                    <div className="text-[10px] text-slate-400">تحلیل سفارشات، دوره‌ها و مشخصات فراگیر</div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* دانش‌آموز جدید - دکمه اصلی و شکیل */}
           <button
             type="button"
             onClick={() => openForm()}
-            className="flex items-center gap-1.5 px-5 py-2 text-xs font-semibold text-white bg-neutral-900 rounded-full hover:bg-neutral-800 transition-colors shadow-xs"
+            className="h-8.5 px-3.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl inline-flex items-center gap-1.5 transition-all shadow-xs whitespace-nowrap shrink-0"
           >
-            <IconPlus size={15} />
+            <IconPlus size={14} />
             <span>دانش‌آموز جدید</span>
           </button>
         </div>
@@ -702,18 +760,18 @@ export const Students: React.FC<StudentsProps> = ({ initialFilters }) => {
                       </td>
 
                       {/* Actions */}
-                      <td className="py-3 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
+                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
                           <button
                             type="button"
                             onClick={() => {
                               setDossierStudent(std);
                               setDossierInitialMode('educational');
                             }}
-                            className="px-2.5 py-1 bg-[#162E6E] hover:bg-[#0f204d] text-white rounded-lg text-xs font-bold transition-all shadow-2xs flex items-center gap-1 cursor-pointer"
-                            title="مشاهده اطلاعات هویتی و آموزشی دانش‌آموز در یک نگاه"
+                            className="h-7 px-2.5 bg-[#162E6E] hover:bg-[#0f204d] text-white rounded-lg text-[11px] font-medium transition-colors shadow-2xs inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer shrink-0"
+                            title="مشاهده اطلاعات هویتی و پرونده آموزشی دانش‌آموز"
                           >
-                            <GraduationCap size={13} />
+                            <GraduationCap size={13} className="shrink-0" />
                             <span>پرونده آموزشی</span>
                           </button>
                           <button
@@ -722,27 +780,27 @@ export const Students: React.FC<StudentsProps> = ({ initialFilters }) => {
                               setDossierStudent(std);
                               setDossierInitialMode('financial');
                             }}
-                            className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/80 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
-                            title="مشاهده پرونده مالی، اقساط، تسویه و معوقات"
+                            className="h-7 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/80 rounded-lg text-[11px] font-medium transition-colors inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer shrink-0"
+                            title="مشاهده سوابق مالی، اقساط، تسویه و معوقات"
                           >
-                            <CreditCard size={13} />
-                            <span>پرونده مالی (اقساط و تسویه)</span>
+                            <CreditCard size={13} className="text-emerald-600 shrink-0" />
+                            <span>پرونده مالی</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => openForm(std)}
-                            className="p-1.5 text-slate-500 hover:text-[#162E6E] hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                            className="w-7 h-7 flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer shrink-0"
                             title="ویرایش مشخصات"
                           >
-                            <IconEdit size={15} />
+                            <IconEdit size={14} />
                           </button>
                           <button
                             type="button"
                             onClick={() => setDeleteConfirmId(std.id)}
-                            className="p-1.5 text-slate-400 hover:text-[#D64545] hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                            className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
                             title="حذف پرونده"
                           >
-                            <IconTrash size={15} />
+                            <IconTrash size={14} />
                           </button>
                         </div>
                       </td>

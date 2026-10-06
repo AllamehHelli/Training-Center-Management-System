@@ -232,11 +232,11 @@ export const Finance: React.FC<FinanceProps> = ({ initialFilters, onNavigate }) 
           <button
             type="button"
             onClick={() => setIsWooImportOpen(true)}
-            className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200/80 rounded-full hover:bg-indigo-100 transition-colors shadow-2xs"
+            className="h-8.5 px-3 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 hover:text-indigo-700 border border-slate-200/90 rounded-xl inline-flex items-center gap-1.5 transition-colors shadow-2xs whitespace-nowrap shrink-0"
             title="همگام‌سازی و تحلیل سفارشات و اقساط فایل خروجی ووکامرس"
           >
-            <FileSpreadsheet size={14} className="text-indigo-600" />
-            <span>ورود سفارشات ووکامرس (CSV)</span>
+            <FileSpreadsheet size={14} className="text-indigo-600 shrink-0" />
+            <span>ورود ووکامرس</span>
           </button>
 
           <div className="flex items-center gap-1 p-1 bg-neutral-100/80 rounded-full shrink-0">
@@ -652,11 +652,11 @@ export const Finance: React.FC<FinanceProps> = ({ initialFilters, onNavigate }) 
                             <button
                               type="button"
                               onClick={() => setSelectedDossier({ studentId: item.studentId, regId: item.regId })}
-                              className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/80 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
-                              title="مشاهده پرونده مالی (اقساط و تسویه)"
+                              className="h-7 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/80 text-[11px] font-medium transition-colors inline-flex items-center gap-1.5 cursor-pointer shadow-2xs whitespace-nowrap shrink-0"
+                              title="مشاهده پرونده مالی، اقساط، تسویه و معوقات"
                             >
-                              <CreditCard size={13} />
-                              <span>پرونده مالی (اقساط و تسویه)</span>
+                              <CreditCard size={13} className="text-emerald-600 shrink-0" />
+                              <span>پرونده مالی</span>
                             </button>
                           </div>
                         </td>
