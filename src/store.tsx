@@ -59,6 +59,52 @@ export const DEMO_TOOLS_ENABLED: boolean =
 /** HI-1: key prefix for automatic pre-reset backups kept in localStorage. */
 const RESET_BACKUP_PREFIX = 'helli_institute_backup_before_reset_';
 
+/** کلید ذخیره آخرین نسخه پشتیبان خودکار پیش از همگام‌سازی ووکامرس */
+export const WOO_PRE_SYNC_SNAPSHOT_KEY = 'helli_woo_pre_sync_snapshot';
+
+export interface WooPreSyncSnapshot {
+  savedAt: string;
+  jalaliDate: string;
+  totalStudents: number;
+  totalClasses: number;
+  totalRegistrations: number;
+  classes: ClassRoom[];
+  students: Student[];
+  registrations: Registration[];
+  nextRegSeq: number;
+}
+
+/** ذخیره اسنپ‌شات خودکار قبل از اعمال همگام‌سازی ووکامرس */
+export function savePreSyncSnapshot(state: AppState): void {
+  try {
+    const snapshot: WooPreSyncSnapshot = {
+      savedAt: new Date().toISOString(),
+      jalaliDate: getTodayJalali(),
+      totalStudents: state.students.length,
+      totalClasses: state.classes.length,
+      totalRegistrations: state.registrations.length,
+      classes: state.classes,
+      students: state.students,
+      registrations: state.registrations,
+      nextRegSeq: state.nextRegSeq || 100,
+    };
+    localStorage.setItem(WOO_PRE_SYNC_SNAPSHOT_KEY, JSON.stringify(snapshot));
+  } catch (e) {
+    console.warn('Could not save pre-sync snapshot to localStorage', e);
+  }
+}
+
+/** خواندن اطلاعات اسنپ‌شات قبل از همگام‌سازی */
+export function getPreSyncSnapshot(): WooPreSyncSnapshot | null {
+  try {
+    const raw = localStorage.getItem(WOO_PRE_SYNC_SNAPSHOT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 /** Current Jalali year used as the prefix of newly issued tracking codes. */
 function currentJalaliYearForCodes(): number {
   const jy = parseInt(getTodayJalali().split('/')[0], 10);
@@ -122,6 +168,7 @@ export const MUTATING_ACTION_TYPES: ReadonlySet<AppAction['type']> = new Set<App
   'MARK_INSTALLMENT_PAID',
   'REFUND_INSTALLMENT',
   'RESTORE_FIVE_SAMPLES',
+  'RESTORE_PRE_SYNC_SNAPSHOT',
   // CR-3: WooCommerce order sync creates students/registrations too, so it
   // must be blocked while an archived year is being viewed.
   'SYNC_WOO_ORDERS',
@@ -227,6 +274,7 @@ export type AppAction =
   | { type: 'ADD_ACADEMIC_YEAR'; payload: AcademicYear }
   | { type: 'DELETE_ACADEMIC_YEAR'; payload: string }
   | { type: 'RESTORE_FIVE_SAMPLES' }
+  | { type: 'RESTORE_PRE_SYNC_SNAPSHOT'; payload: WooPreSyncSnapshot }
   // Server truth replaces the local optimistic copy after login/refresh.
   | { type: 'HYDRATE_FROM_SERVER'; payload: AppState };
 
@@ -600,6 +648,17 @@ function appReducer(state: AppState, action: AppAction): AppState {
         teachers: five.teachers,
         counselors: five.counselors,
         nextRegSeq: Math.max(state.nextRegSeq || 0, 105),
+      };
+    }
+
+    case 'RESTORE_PRE_SYNC_SNAPSHOT': {
+      const snap = action.payload;
+      return {
+        ...state,
+        students: snap.students,
+        classes: snap.classes,
+        registrations: snap.registrations,
+        nextRegSeq: Math.max(state.nextRegSeq || 0, snap.nextRegSeq || 100),
       };
     }
 

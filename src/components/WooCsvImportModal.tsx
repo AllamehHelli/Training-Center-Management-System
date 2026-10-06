@@ -54,6 +54,23 @@ export const WooCsvImportModal: React.FC<Props> = ({ isOpen, onClose, onSuccess 
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // فیلتر ردیف‌های پیش‌نمایش جدول
+  const filteredRows = useMemo(() => {
+    if (!previewResult) return [];
+    return previewResult.rows.filter((r) => {
+      if (filterCategory !== 'all' && r.category !== filterCategory) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const inName = r.fullName.toLowerCase().includes(q);
+        const inNid = r.cleanNationalId.includes(q) || r.nationalId.includes(q);
+        const inOrder = r.orderId.includes(q);
+        const inItems = r.rawItems.toLowerCase().includes(q);
+        return inName || inNid || inOrder || inItems;
+      }
+      return true;
+    });
+  }, [previewResult, filterCategory, searchQuery]);
+
   if (!isOpen) return null;
 
   const handleFileProcess = (file: File) => {
@@ -140,23 +157,6 @@ export const WooCsvImportModal: React.FC<Props> = ({ isOpen, onClose, onSuccess 
       showToast(`خطا در اعمال داده‌ها: ${err?.message || 'ناشناخته'}`, 'error');
     }
   };
-
-  // فیلتر ردیف‌های پیش‌نمایش جدول
-  const filteredRows = useMemo(() => {
-    if (!previewResult) return [];
-    return previewResult.rows.filter((r) => {
-      if (filterCategory !== 'all' && r.category !== filterCategory) return false;
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const inName = r.fullName.toLowerCase().includes(q);
-        const inNid = r.cleanNationalId.includes(q) || r.nationalId.includes(q);
-        const inOrder = r.orderId.includes(q);
-        const inItems = r.rawItems.toLowerCase().includes(q);
-        return inName || inNid || inOrder || inItems;
-      }
-      return true;
-    });
-  }, [previewResult, filterCategory, searchQuery]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">

@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { useAppStore, hasWooCredentials } from './store';
+import React, { useState, useEffect } from 'react';
+import { useAppStore, hasWooCredentials, getPreSyncSnapshot, WooPreSyncSnapshot } from './store';
 import { toPersianDigits, getTodayJalali, formatToman, validateNationalId, toEnglishDigits } from './utils';
 import { ClassRoom, Student, Registration } from './types';
-import { useToast, Field, InfoTooltip } from './ui';
+import { useToast, Field, InfoTooltip, ConfirmModal } from './ui';
 import { WooCsvImportModal } from './components/WooCsvImportModal';
 import {
   IconWoo,
@@ -17,7 +17,7 @@ import {
   IconEyeOff,
   IconRefresh,
 } from './icons';
-import { FileSpreadsheet, UploadCloud } from 'lucide-react';
+import { FileSpreadsheet, UploadCloud, RotateCcw, History } from 'lucide-react';
 
 /**
  * CR-3: deterministic mock order feed. A real WooCommerce integration fetches
@@ -90,6 +90,35 @@ export const Woo: React.FC = () => {
   const [isSyncingProducts, setIsSyncingProducts] = useState(false);
   const [isSyncingOrders, setIsSyncingOrders] = useState(false);
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
+  const [isConfirmRestoreOpen, setIsConfirmRestoreOpen] = useState(false);
+  const [snapshot, setSnapshot] = useState<WooPreSyncSnapshot | null>(null);
+
+  useEffect(() => {
+    setSnapshot(getPreSyncSnapshot());
+  }, [state.registrations.length, state.students.length]);
+
+  const handleRestore = () => {
+    if (!snapshot) return;
+    try {
+      dispatch({
+        type: 'RESTORE_PRE_SYNC_SNAPSHOT',
+        payload: snapshot,
+      });
+      dispatch({
+        type: 'ADD_WOO_LOG',
+        payload: {
+          time: new Date().toLocaleTimeString('fa-IR'),
+          message: `عملیات بازگشت به قبل (Restore) انجام شد: اطلاعات به وضعیت قبل از همگام‌سازی (${snapshot.jalaliDate}) بازگردانده شدند.`,
+          type: 'info',
+        },
+      });
+      showToast('اطلاعات با موفقیت به وضعیت پیش از همگام‌سازی بازگردانده شدند.', 'success');
+      setIsConfirmRestoreOpen(false);
+      setSnapshot(getPreSyncSnapshot());
+    } catch (err: any) {
+      showToast(`خطا در بازگردانی اطلاعات: ${err?.message || 'نامشخص'}`, 'error');
+    }
+  };
 
   // Save Settings
   const handleSaveSettings = (e: React.FormEvent) => {
