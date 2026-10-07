@@ -86,6 +86,8 @@ export interface ClassRoom {
   teacher: string;
   sessions: ClassSession[];
   tuition: number; // in Tomans
+  isPackage?: boolean; // آیا این دوره یک پکیج جامع چنددرسی است؟
+  packageCourseIds?: string[]; // شناسه‌های دروس مستقل تشکیل‌دهنده پکیج
 }
 
 export interface Installment {
@@ -130,6 +132,11 @@ export interface PaymentPlan {
 
 export type RegistrationStatus = 'pending' | 'approved' | 'cancelled';
 
+export interface PackageCourseSelection {
+  classId: string;
+  sessionId: string;
+}
+
 export interface Registration {
   id: string;
   /**
@@ -142,13 +149,15 @@ export interface Registration {
   classId: string;
   sessionId: string;
   status: RegistrationStatus;
-  amount: number; // Tuition after discount
+  amount: number; // Tuition after discount (شهریه کل پکیج یا دوره تک)
   discount: number;
   plan: PaymentPlan;
   date: string; // Jalali date
   notes?: string;
   wooOrderId?: number | string; // CR-3: WooCommerce order number (idempotency key)
   wooOrderSyncedAt?: string; // Jalali date the order was imported
+  isPackage?: boolean; // ثبت‌نام از نوع پکیج چنددرسی
+  packageSelections?: PackageCourseSelection[]; // زنگ‌های اختصاص‌یافته به تک‌تک دروس پکیج
 }
 
 export interface FieldSettings {

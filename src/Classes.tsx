@@ -10,6 +10,7 @@ import { toPersianDigits, formatToman, calculateClassDuration, parseSessionTimeR
 import { ClassRoom, ClassSession, SessionKind, StudentGrade } from './types';
 import { Modal, ConfirmModal, ProgressBar, useToast, Field, InfoTooltip } from './ui';
 import { DayPicker, TimeRangePicker } from './SchedulePickers';
+import { Package, Layers, BookOpen, Check } from 'lucide-react';
 import {
   IconPlus,
   IconEdit,
@@ -46,6 +47,8 @@ export const Classes: React.FC<ClassesProps> = ({ initialFilters }) => {
   const [formTeacher, setFormTeacher] = useState('');
   const [formTuition, setFormTuition] = useState<number>(12000000);
   const [formSessions, setFormSessions] = useState<ClassSession[]>([]);
+  const [formIsPackage, setFormIsPackage] = useState(false);
+  const [formPackageCourseIds, setFormPackageCourseIds] = useState<string[]>([]);
   const [formError, setFormError] = useState('');
 
   // LO-5: active (non-cancelled) registrations per bell in the CURRENT store.
@@ -87,6 +90,8 @@ export const Classes: React.FC<ClassesProps> = ({ initialFilters }) => {
       setFormTeacherId(c.teacherId || '');
       setFormTeacher(c.teacher);
       setFormTuition(c.tuition);
+      setFormIsPackage(!!c.isPackage);
+      setFormPackageCourseIds(c.packageCourseIds || []);
       // ME-2: derive real start/end times by parsing the session `time` string
       // (e.g. "۰۹:۰۰ الی ۱۳:۰۰") instead of guessing a fixed 16:00–17:30.
       setFormSessions(
@@ -106,6 +111,8 @@ export const Classes: React.FC<ClassesProps> = ({ initialFilters }) => {
       setFormGrade(grades[0] || 'هفتم');
       setFormTeacher('');
       setFormTuition(12000000);
+      setFormIsPackage(false);
+      setFormPackageCourseIds([]);
       setFormSessions([
         {
           id: `ses-${Date.now()}-1`,
@@ -274,6 +281,11 @@ export const Classes: React.FC<ClassesProps> = ({ initialFilters }) => {
       }
     }
 
+    if (formIsPackage && formPackageCourseIds.length < 2) {
+      setFormError('یک پکیج جامع آموزشی باید حداقل شامل ۲ درس مستقل باشد.');
+      return;
+    }
+
     // Check duplicate course name + grade
     const duplicate = state.classes.find(
       (c) =>
@@ -296,25 +308,29 @@ export const Classes: React.FC<ClassesProps> = ({ initialFilters }) => {
         ...editingClass,
         name: formName.trim(),
         grade: formGrade,
-        teacherId: formTeacherId || undefined,
-        teacher: formTeacher.trim(),
+        teacherId: formIsPackage ? undefined : (formTeacherId || undefined),
+        teacher: formIsPackage ? (formTeacher.trim() || 'دپارتمان اساتید پکیج تیزهوشان') : formTeacher.trim(),
         tuition: formTuition,
         sessions: normalizedSessions,
+        isPackage: formIsPackage,
+        packageCourseIds: formIsPackage ? formPackageCourseIds : undefined,
       };
       dispatch({ type: 'UPDATE_CLASS', payload: updated });
-      showToast('مشخصات دوره آموزشی با موفقیت به‌روزرسانی شد', 'success');
+      showToast(formIsPackage ? 'مشخصات پکیج جامع آموزشی با موفقیت به‌روزرسانی شد' : 'مشخصات دوره آموزشی با موفقیت به‌روزرسانی شد', 'success');
     } else {
       const newClass: ClassRoom = {
         id: `cls-${Date.now()}`,
         name: formName.trim(),
         grade: formGrade,
-        teacherId: formTeacherId || undefined,
-        teacher: formTeacher.trim(),
+        teacherId: formIsPackage ? undefined : (formTeacherId || undefined),
+        teacher: formIsPackage ? (formTeacher.trim() || 'دپارتمان اساتید پکیج تیزهوشان') : formTeacher.trim(),
         tuition: formTuition,
         sessions: normalizedSessions,
+        isPackage: formIsPackage,
+        packageCourseIds: formIsPackage ? formPackageCourseIds : undefined,
       };
       dispatch({ type: 'ADD_CLASS', payload: newClass });
-      showToast(`دوره «${newClass.name}» با موفقیت افزوده شد`, 'success');
+      showToast(formIsPackage ? `پکیج جامع «${newClass.name}» با موفقیت تعریف شد` : `دوره «${newClass.name}» با موفقیت افزوده شد`, 'success');
     }
 
     setIsModalOpen(false);
@@ -433,9 +449,17 @@ export const Classes: React.FC<ClassesProps> = ({ initialFilters }) => {
                   {/* Header */}
                   <div className="flex items-start justify-between gap-3 mb-2">
                     <div>
-                      <span className="text-[11px] font-semibold text-[#0E7C5B] bg-emerald-50 px-2 py-0.5 rounded-md">
-                        پایه {cls.grade}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {cls.isPackage ? (
+                          <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2.5 py-0.5 rounded-md inline-flex items-center gap-1">
+                            <Package size={12} />
+                            <span>پکیج جامع ({toPersianDigits(cls.packageCourseIds?.length || 0)} درس)</span>
+                          </span>
+                        ) : null}
+                        <span className="text-[11px] font-semibold text-[#0E7C5B] bg-emerald-50 px-2 py-0.5 rounded-md">
+                          پایه {cls.grade}
+                        </span>
+                      </div>
                       <h3 className="text-base font-bold text-[#0A3528] mt-1.5 leading-snug">
                         {cls.name}
                       </h3>
@@ -473,6 +497,30 @@ export const Classes: React.FC<ClassesProps> = ({ initialFilters }) => {
                       ) : null;
                     })()}
                   </div>
+
+                  {/* Sub-courses pills if package */}
+                  {cls.isPackage && cls.packageCourseIds && cls.packageCourseIds.length > 0 && (
+                    <div className="mb-3 p-2.5 bg-indigo-50/60 rounded-2xl border border-indigo-100 space-y-1.5">
+                      <div className="text-[11px] font-semibold text-indigo-900 flex items-center gap-1">
+                        <Layers size={13} className="text-indigo-600" />
+                        <span>دروس زیرمجموعه پکیج ({toPersianDigits(cls.packageCourseIds.length)} درس):</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {cls.packageCourseIds.map((subId) => {
+                          const subCls = state.classes.find((c) => c.id === subId);
+                          return subCls ? (
+                            <span
+                              key={subId}
+                              className="text-[10px] bg-white border border-indigo-200/80 text-indigo-800 px-2 py-0.5 rounded-md font-medium"
+                              title={`مدرس: ${subCls.teacher}`}
+                            >
+                              {subCls.name}
+                            </span>
+                          ) : null;
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="text-xs font-bold text-[#0A3528] mb-4 pb-3 border-b border-slate-100">
                     شهریه دوره: {formatToman(cls.tuition)}
@@ -570,6 +618,125 @@ export const Classes: React.FC<ClassesProps> = ({ initialFilters }) => {
             <div className="p-3 bg-red-50 border border-red-200 text-[#D64545] rounded-xl text-xs flex items-center gap-2">
               <IconAlert size={16} className="shrink-0" />
               <span>{formError}</span>
+            </div>
+          )}
+
+          {/* Course Type Toggle: Single Course vs Package */}
+          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <span className="text-xs font-bold text-slate-800 block">نوع ساختار دوره آموزشی:</span>
+              <span className="text-[11px] text-slate-500">
+                مشخص کنید این دوره یک درس مستقل است یا یک پکیج جامع متشکل از چند درس زیرمجموعه
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 p-1 bg-white rounded-xl border border-slate-200/80 shadow-2xs shrink-0">
+              <button
+                type="button"
+                onClick={() => setFormIsPackage(false)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  !formIsPackage
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <BookOpen size={13} />
+                <span>درس تک</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFormIsPackage(true);
+                  if (!formTeacher) setFormTeacher('دپارتمان اساتید پکیج تیزهوشان');
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  formIsPackage
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Package size={13} />
+                <span>پکیج جامع (چنددرسی)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* If Package: Constituent Sub-Courses Selection */}
+          {formIsPackage && (
+            <div className="p-4 bg-indigo-50/60 rounded-2xl border border-indigo-200 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
+                    <Layers size={15} className="text-indigo-600" />
+                    <span>انتخاب دروس تشکیل‌دهنده پکیج (پایه {formGrade}):</span>
+                  </div>
+                  <p className="text-[11px] text-indigo-800 mt-0.5">
+                    دانش‌آموز هنگام ثبت‌نام در این پکیج، زنگ کلاسی هر یک از این دروس را انتخاب کرده و در لیست کلاسی آن‌ها ثبت می‌شود.
+                  </p>
+                </div>
+                <span className="text-[11px] font-bold text-indigo-700 bg-white px-2.5 py-1 rounded-lg border border-indigo-200 shadow-2xs shrink-0">
+                  {toPersianDigits(formPackageCourseIds.length)} درس انتخاب‌شده
+                </span>
+              </div>
+
+              {/* Sub-courses Checkbox Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1">
+                {state.classes
+                  .filter((c) => !c.isPackage && c.grade === formGrade && c.id !== editingClass?.id)
+                  .map((c) => {
+                    const isChecked = formPackageCourseIds.includes(c.id);
+                    return (
+                      <label
+                        key={c.id}
+                        className={`flex items-center justify-between p-2.5 rounded-xl border text-xs cursor-pointer transition-all ${
+                          isChecked
+                            ? 'bg-white border-indigo-400 ring-1 ring-indigo-300 font-bold text-indigo-950 shadow-2xs'
+                            : 'bg-white/70 border-slate-200 text-slate-700 hover:bg-white'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setFormPackageCourseIds((prev) => [...prev, c.id]);
+                              } else {
+                                setFormPackageCourseIds((prev) => prev.filter((id) => id !== c.id));
+                              }
+                            }}
+                            className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                          />
+                          <span className="truncate">{c.name}</span>
+                        </div>
+                        <span className="text-[10px] text-slate-500 font-mono shrink-0 mr-2">
+                          {formatToman(c.tuition)}
+                        </span>
+                      </label>
+                    );
+                  })}
+              </div>
+
+              {/* Tuition helper */}
+              {formPackageCourseIds.length > 0 && (() => {
+                const sumTuition = formPackageCourseIds.reduce(
+                  (sum, cid) => sum + (state.classes.find((c) => c.id === cid)?.tuition || 0),
+                  0
+                );
+                return (
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-indigo-200 text-xs">
+                    <span className="text-indigo-900 text-[11px]">
+                      مجموع شهریه تک‌درس‌ها: <strong className="font-mono">{formatToman(sumTuition)}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setFormTuition(sumTuition)}
+                      className="text-[11px] text-indigo-700 hover:text-indigo-900 bg-white px-2.5 py-1 rounded-lg border border-indigo-200 font-bold transition-colors cursor-pointer"
+                    >
+                      تنظیم شهریه پکیج مساوی مجموع تک‌درس‌ها ({formatToman(sumTuition)})
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
           )}
 

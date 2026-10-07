@@ -187,7 +187,10 @@ export const ARCHIVED_READONLY_MESSAGE =
 function stampEnrolledCounts(cls: ClassRoom, state: AppState): ClassRoom {
   const enrolledFor = (sessionId: string) =>
     state.registrations.filter(
-      (r) => r.classId === cls.id && r.sessionId === sessionId && r.status !== 'cancelled'
+      (r) =>
+        r.status !== 'cancelled' &&
+        ((r.classId === cls.id && r.sessionId === sessionId) ||
+          (r.isPackage && r.packageSelections?.some((ps) => ps.classId === cls.id && ps.sessionId === sessionId)))
     ).length;
   return {
     ...cls,
@@ -1210,11 +1213,18 @@ export const AppProvider: React.FC<{
     state.registrations.filter((r) => r.studentId === studentId);
 
   const getClassRegistrations = (classId: string) =>
-    state.registrations.filter((r) => r.classId === classId && r.status !== 'cancelled');
+    state.registrations.filter(
+      (r) =>
+        r.status !== 'cancelled' &&
+        (r.classId === classId || (r.isPackage && r.packageSelections?.some((ps) => ps.classId === classId)))
+    );
 
   const getSessionEnrolledCount = (classId: string, sessionId: string) => {
     return state.registrations.filter(
-      (r) => r.classId === classId && r.sessionId === sessionId && r.status !== 'cancelled'
+      (r) =>
+        r.status !== 'cancelled' &&
+        ((r.classId === classId && r.sessionId === sessionId) ||
+          (r.isPackage && r.packageSelections?.some((ps) => ps.classId === classId && ps.sessionId === sessionId)))
     ).length;
   };
 
