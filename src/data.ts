@@ -529,6 +529,33 @@ export function buildSeedData(): {
         },
       ],
     },
+    {
+      id: 'pkg-1',
+      name: 'گاما تیزهوشان نهم',
+      grade: 'نهم',
+      teacher: 'دپارتمان اساتید گاما تیزهوشان',
+      tuition: 22000000,
+      isPackage: true,
+      packageCourseIds: ['cls-1', 'cls-5'],
+      sessions: [
+        {
+          id: 'ses-pkg-even',
+          kind: 'even',
+          label: 'زنگ جامع روزهای زوج',
+          days: 'شنبه، دوشنبه، چهارشنبه',
+          time: '۱۶:۰۰ الی ۱۹:۳۰',
+          capacity: 30,
+        },
+        {
+          id: 'ses-pkg-odd',
+          kind: 'odd',
+          label: 'زنگ جامع روزهای فرد',
+          days: 'یکشنبه، سه‌شنبه، پنجشنبه',
+          time: '۱۶:۰۰ الی ۱۹:۳۰',
+          capacity: 30,
+        },
+      ],
+    },
   ];
 
   // 16 Registrations with diverse plans (cash, 3, 6, 9-month plans)

@@ -25,6 +25,9 @@ import {
   Sparkles,
   ExternalLink,
   GraduationCap,
+  ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
 } from 'lucide-react';
 
 export const Counselors: React.FC = () => {
@@ -35,6 +38,30 @@ export const Counselors: React.FC = () => {
   const [gradeFilter, setGradeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+
+  // Collapsible state for counselor cards
+  const [collapsedCounselorIds, setCollapsedCounselorIds] = useState<Record<string, boolean>>({});
+
+  const toggleCounselorCollapse = (id: string) => {
+    setCollapsedCounselorIds((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
+
+  const areAllCounselorsCollapsed = () => {
+    if (filteredCounselors.length === 0) return false;
+    return filteredCounselors.every((c) => collapsedCounselorIds[c.id]);
+  };
+
+  const toggleAllCounselorsCollapse = () => {
+    const allCollapsed = areAllCounselorsCollapsed();
+    const next: Record<string, boolean> = {};
+    filteredCounselors.forEach((c) => {
+      next[c.id] = !allCollapsed;
+    });
+    setCollapsedCounselorIds(next);
+  };
 
   // Modals
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -311,6 +338,19 @@ export const Counselors: React.FC = () => {
             </button>
           </div>
 
+          {/* Collapse All / Expand All Toggle */}
+          {viewMode === 'grid' && filteredCounselors.length > 0 && (
+            <button
+              type="button"
+              onClick={toggleAllCounselorsCollapse}
+              className="px-2.5 py-1.5 bg-neutral-100 hover:bg-neutral-200/80 text-neutral-700 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+              title="جمع کردن یا باز کردن تمام باکس‌های مشاوران"
+            >
+              <ChevronsUpDown size={14} className="text-neutral-500" />
+              <span>{areAllCounselorsCollapsed() ? 'باز کردن همه' : 'جمع کردن همه'}</span>
+            </button>
+          )}
+
           {/* View Mode Toggle */}
           <div className="flex items-center p-0.5 bg-neutral-100 rounded-xl text-neutral-500">
             <button
@@ -358,136 +398,210 @@ export const Counselors: React.FC = () => {
             const assignedStudents = getAssignedStudents(counselor.id);
             const maxCap = counselor.maxCapacity || 30;
             const percentage = Math.min(100, Math.round((assignedStudents.length / maxCap) * 100));
+            const isCollapsed = !!collapsedCounselorIds[counselor.id];
 
             return (
               <div
                 key={counselor.id}
-                className="bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between group"
+                className={`bg-white rounded-2xl border border-neutral-200/80 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between group ${
+                  isCollapsed ? 'p-3.5' : 'p-5'
+                }`}
               >
                 <div>
-                  {/* Top Bar: Avatar + Name + Status */}
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-teal-600 to-teal-800 text-white flex items-center justify-center text-sm font-black shadow-xs shrink-0">
+                  {/* Top Bar: Avatar + Name + Status + Collapse Button */}
+                  <div className="flex items-start justify-between gap-2.5 mb-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-teal-600 to-teal-800 text-white flex items-center justify-center text-sm font-black shadow-xs shrink-0">
                         {counselor.firstName[0]}
                         {counselor.lastName[0]}
                       </div>
-                      <div>
-                        <h3 className="text-sm font-extrabold text-neutral-900 group-hover:text-teal-600 transition-colors">
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-extrabold text-neutral-900 group-hover:text-teal-600 transition-colors truncate">
                           مشاور {counselor.firstName} {counselor.lastName}
                         </h3>
-                        <span className="inline-block mt-0.5 text-[11px] font-bold text-teal-700 bg-teal-50 border border-teal-200/70 px-2 py-0.5 rounded-md">
+                        <span className="inline-block mt-0.5 text-[11px] font-bold text-teal-700 bg-teal-50 border border-teal-200/70 px-2 py-0.5 rounded-md truncate max-w-[170px]">
                           {counselor.specialty || 'هدایت تحصیلی و انگیزشی'}
                         </span>
                       </div>
                     </div>
 
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
-                        counselor.isActive
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : 'bg-neutral-100 text-neutral-500 border-neutral-200'
-                      }`}
-                    >
-                      {counselor.isActive ? 'فعال' : 'غیرفعال'}
-                    </span>
-                  </div>
-
-                  {/* Grades Covered */}
-                  {counselor.grades && counselor.grades.length > 0 && (
-                    <div className="flex items-center gap-1.5 mb-3 flex-wrap">
-                      <span className="text-[10px] text-neutral-400 font-bold">پایه‌های تحت پوشش:</span>
-                      {counselor.grades.map((g) => (
-                        <span key={g} className="text-[10px] font-bold bg-neutral-100 text-neutral-700 px-2 py-0.5 rounded-md">
-                          پایه {g}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Capacity Bar */}
-                  <div className="bg-neutral-50 p-3 rounded-xl border border-neutral-100 mb-3 space-y-1.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-neutral-700">ظرفیت پذیرش دانش‌آموز</span>
-                      <span className="font-extrabold text-teal-700">
-                        {toPersianDigits(assignedStudents.length)} از {toPersianDigits(maxCap)} نفر ({toPersianDigits(percentage)}٪)
-                      </span>
-                    </div>
-                    <div className="w-full bg-neutral-200/80 rounded-full h-2 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-300 ${
-                          percentage >= 100 ? 'bg-rose-500' : percentage >= 80 ? 'bg-amber-500' : 'bg-teal-500'
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
+                          counselor.isActive
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-neutral-100 text-neutral-500 border-neutral-200'
                         }`}
-                        style={{ width: `${percentage}%` }}
-                      />
+                      >
+                        {counselor.isActive ? 'فعال' : 'غیرفعال'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => toggleCounselorCollapse(counselor.id)}
+                        className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+                          isCollapsed
+                            ? 'bg-teal-50 border-teal-200 text-teal-700 hover:bg-teal-100'
+                            : 'bg-neutral-50 border-neutral-200 text-neutral-500 hover:bg-neutral-100'
+                        }`}
+                        title={isCollapsed ? 'باز کردن کامل اطلاعات مشاور' : 'جمع کردن این باکس'}
+                      >
+                        {isCollapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
+                      </button>
                     </div>
-                    <div className="text-[10px] text-neutral-500 text-left">
-                      {maxCap - assignedStudents.length > 0 ? (
-                        <span className="text-emerald-600 font-bold">
-                          {toPersianDigits(maxCap - assignedStudents.length)} ظرفیت خالی
+                  </div>
+
+                  {/* Collapsed Compact View */}
+                  {isCollapsed ? (
+                    <div className="pt-2.5 mt-1 border-t border-neutral-100 flex items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                        <span className="font-extrabold text-teal-800 text-[11px]">
+                          {toPersianDigits(assignedStudents.length)} / {toPersianDigits(maxCap)} دانش‌آموز
                         </span>
-                      ) : (
-                        <span className="text-rose-600 font-bold">ظرفیت تکمیل</span>
-                      )}
+                        {maxCap - assignedStudents.length > 0 ? (
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/50">
+                            {toPersianDigits(maxCap - assignedStudents.length)} جای خالی
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200/50">
+                            تکمیل
+                          </span>
+                        )}
+                        {counselor.phone && (
+                          <span className="text-[11px] text-neutral-500 font-mono hidden sm:inline" dir="ltr">
+                            {toPersianDigits(counselor.phone)}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCounselorStudents(counselor)}
+                          className="p-1 text-teal-700 hover:text-teal-900 hover:bg-teal-50 rounded-lg transition-colors text-[11px] font-bold flex items-center gap-1 px-1.5 cursor-pointer"
+                          title="مشاهده دانش‌آموزان"
+                        >
+                          <Users size={12} />
+                          <span>({toPersianDigits(assignedStudents.length)})</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openForm(counselor)}
+                          disabled={isViewingArchived}
+                          className="p-1 text-neutral-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors cursor-pointer"
+                          title="ویرایش مشاور"
+                        >
+                          <Edit2 size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteConfirmId(counselor.id)}
+                          disabled={isViewingArchived}
+                          className="p-1 text-neutral-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          title="حذف مشاور"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <>
+                      {/* Grades Covered */}
+                      {counselor.grades && counselor.grades.length > 0 && (
+                        <div className="flex items-center gap-1.5 mb-3 flex-wrap">
+                          <span className="text-[10px] text-neutral-400 font-bold">پایه‌های تحت پوشش:</span>
+                          {counselor.grades.map((g) => (
+                            <span key={g} className="text-[10px] font-bold bg-neutral-100 text-neutral-700 px-2 py-0.5 rounded-md">
+                              پایه {g}
+                            </span>
+                          ))}
+                        </div>
+                      )}
 
-                  {/* Contact Info Pills */}
-                  <div className="flex flex-wrap items-center gap-2 mb-3 text-xs">
-                    {counselor.phone && (
-                      <a
-                        href={`tel:${counselor.phone}`}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-neutral-100/80 hover:bg-neutral-200/80 text-neutral-700 rounded-lg text-[11px] font-medium transition-colors"
-                        dir="ltr"
-                      >
-                        <Phone size={11} className="text-neutral-500" />
-                        <span>{toPersianDigits(counselor.phone)}</span>
-                      </a>
-                    )}
-                    {counselor.email && (
-                      <a
-                        href={`mailto:${counselor.email}`}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-neutral-100/80 hover:bg-neutral-200/80 text-neutral-700 rounded-lg text-[11px] font-medium transition-colors"
-                        dir="ltr"
-                      >
-                        <Mail size={11} className="text-neutral-500" />
-                        <span className="truncate max-w-[140px]">{counselor.email}</span>
-                      </a>
-                    )}
-                  </div>
-                </div>
+                      {/* Capacity Bar */}
+                      <div className="bg-neutral-50 p-3 rounded-xl border border-neutral-100 mb-3 space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-neutral-700">ظرفیت پذیرش دانش‌آموز</span>
+                          <span className="font-extrabold text-teal-700">
+                            {toPersianDigits(assignedStudents.length)} از {toPersianDigits(maxCap)} نفر ({toPersianDigits(percentage)}٪)
+                          </span>
+                        </div>
+                        <div className="w-full bg-neutral-200/80 rounded-full h-2 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-300 ${
+                              percentage >= 100 ? 'bg-rose-500' : percentage >= 80 ? 'bg-amber-500' : 'bg-teal-500'
+                            }`}
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                        <div className="text-[10px] text-neutral-500 text-left">
+                          {maxCap - assignedStudents.length > 0 ? (
+                            <span className="text-emerald-600 font-bold">
+                              {toPersianDigits(maxCap - assignedStudents.length)} ظرفیت خالی
+                            </span>
+                          ) : (
+                            <span className="text-rose-600 font-bold">ظرفیت تکمیل</span>
+                          )}
+                        </div>
+                      </div>
 
-                {/* Card Actions */}
-                <div className="flex items-center justify-between pt-3 mt-3 border-t border-neutral-100">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedCounselorStudents(counselor)}
-                    className="inline-flex items-center gap-1 text-xs font-bold text-teal-700 hover:text-teal-900 bg-teal-50 px-2.5 py-1.5 rounded-xl border border-teal-200/60"
-                  >
-                    <Users size={13} />
-                    <span>مشاهده دانش‌آموزان ({toPersianDigits(assignedStudents.length)})</span>
-                  </button>
+                      {/* Contact Info Pills */}
+                      <div className="flex flex-wrap items-center gap-2 mb-3 text-xs">
+                        {counselor.phone && (
+                          <a
+                            href={`tel:${counselor.phone}`}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-neutral-100/80 hover:bg-neutral-200/80 text-neutral-700 rounded-lg text-[11px] font-medium transition-colors"
+                            dir="ltr"
+                          >
+                            <Phone size={11} className="text-neutral-500" />
+                            <span>{toPersianDigits(counselor.phone)}</span>
+                          </a>
+                        )}
+                        {counselor.email && (
+                          <a
+                            href={`mailto:${counselor.email}`}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-neutral-100/80 hover:bg-neutral-200/80 text-neutral-700 rounded-lg text-[11px] font-medium transition-colors"
+                            dir="ltr"
+                          >
+                            <Mail size={11} className="text-neutral-500" />
+                            <span className="truncate max-w-[140px]">{counselor.email}</span>
+                          </a>
+                        )}
+                      </div>
 
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => openForm(counselor)}
-                      disabled={isViewingArchived}
-                      className="p-1.5 text-neutral-500 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
-                      title="ویرایش اطلاعات مشاور"
-                    >
-                      <Edit2 size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeleteConfirmId(counselor.id)}
-                      disabled={isViewingArchived}
-                      className="p-1.5 text-neutral-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                      title="حذف مشاور"
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
+                      {/* Card Actions */}
+                      <div className="flex items-center justify-between pt-3 mt-3 border-t border-neutral-100">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCounselorStudents(counselor)}
+                          className="inline-flex items-center gap-1 text-xs font-bold text-teal-700 hover:text-teal-900 bg-teal-50 px-2.5 py-1.5 rounded-xl border border-teal-200/60 cursor-pointer"
+                        >
+                          <Users size={13} />
+                          <span>مشاهده دانش‌آموزان ({toPersianDigits(assignedStudents.length)})</span>
+                        </button>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => openForm(counselor)}
+                            disabled={isViewingArchived}
+                            className="p-1.5 text-neutral-500 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors cursor-pointer"
+                            title="ویرایش اطلاعات مشاور"
+                          >
+                            <Edit2 size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteConfirmId(counselor.id)}
+                            disabled={isViewingArchived}
+                            className="p-1.5 text-neutral-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="حذف مشاور"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             );

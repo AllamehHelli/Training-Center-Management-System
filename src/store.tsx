@@ -400,7 +400,13 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'DELETE_CLASS':
       return {
         ...state,
-        classes: state.classes.filter((c) => c.id !== action.payload),
+        classes: state.classes
+          .filter((c) => c.id !== action.payload)
+          .map((c) =>
+            c.isPackage && c.packageCourseIds
+              ? { ...c, packageCourseIds: c.packageCourseIds.filter((id) => id !== action.payload) }
+              : c
+          ),
         registrations: state.registrations.filter((r) => r.classId !== action.payload),
       };
 

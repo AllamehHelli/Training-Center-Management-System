@@ -26,6 +26,9 @@ import {
   LayoutGrid,
   List,
   Sparkles,
+  ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
 } from 'lucide-react';
 
 export const Teachers: React.FC = () => {
@@ -35,6 +38,30 @@ export const Teachers: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+
+  // Collapsible state for teacher cards
+  const [collapsedTeacherIds, setCollapsedTeacherIds] = useState<Record<string, boolean>>({});
+
+  const toggleTeacherCollapse = (id: string) => {
+    setCollapsedTeacherIds((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
+
+  const areAllTeachersCollapsed = () => {
+    if (filteredTeachers.length === 0) return false;
+    return filteredTeachers.every((t) => collapsedTeacherIds[t.id]);
+  };
+
+  const toggleAllTeachersCollapse = () => {
+    const allCollapsed = areAllTeachersCollapsed();
+    const next: Record<string, boolean> = {};
+    filteredTeachers.forEach((t) => {
+      next[t.id] = !allCollapsed;
+    });
+    setCollapsedTeacherIds(next);
+  };
 
   // Modals
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -280,6 +307,19 @@ export const Teachers: React.FC = () => {
             </button>
           </div>
 
+          {/* Collapse All / Expand All Toggle */}
+          {viewMode === 'grid' && filteredTeachers.length > 0 && (
+            <button
+              type="button"
+              onClick={toggleAllTeachersCollapse}
+              className="px-2.5 py-1.5 bg-neutral-100 hover:bg-neutral-200/80 text-neutral-700 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+              title="جمع کردن یا باز کردن تمام باکس‌های اساتید"
+            >
+              <ChevronsUpDown size={14} className="text-neutral-500" />
+              <span>{areAllTeachersCollapsed() ? 'باز کردن همه' : 'جمع کردن همه'}</span>
+            </button>
+          )}
+
           {/* View Mode Toggle */}
           <div className="flex items-center p-0.5 bg-neutral-100 rounded-xl text-neutral-500">
             <button
@@ -326,138 +366,208 @@ export const Teachers: React.FC = () => {
           {filteredTeachers.map((teacher) => {
             const courses = getTeacherCourses(teacher.id);
             const studentsCount = getTeacherStudentsCount(teacher.id);
+            const isCollapsed = !!collapsedTeacherIds[teacher.id];
 
             return (
               <div
                 key={teacher.id}
-                className="bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between group"
+                className={`bg-white rounded-2xl border border-neutral-200/80 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between group ${
+                  isCollapsed ? 'p-3.5' : 'p-5'
+                }`}
               >
                 <div>
-                  {/* Top Bar: Avatar + Name + Status */}
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 to-indigo-800 text-white flex items-center justify-center text-sm font-black shadow-xs shrink-0">
+                  {/* Top Bar: Avatar + Name + Status + Collapse Button */}
+                  <div className="flex items-start justify-between gap-2.5 mb-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-indigo-600 to-indigo-800 text-white flex items-center justify-center text-sm font-black shadow-xs shrink-0">
                         {teacher.firstName[0]}
                         {teacher.lastName[0]}
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <h3 className="text-sm font-extrabold text-neutral-900 group-hover:text-indigo-600 transition-colors">
+                          <h3 className="text-sm font-extrabold text-neutral-900 group-hover:text-indigo-600 transition-colors truncate">
                             استاد {teacher.firstName} {teacher.lastName}
                           </h3>
                         </div>
-                        <span className="inline-block mt-0.5 text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/70 px-2 py-0.5 rounded-md">
+                        <span className="inline-block mt-0.5 text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/70 px-2 py-0.5 rounded-md truncate max-w-[170px]">
                           {teacher.specialty}
                         </span>
                       </div>
                     </div>
 
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
-                        teacher.isActive
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : 'bg-neutral-100 text-neutral-500 border-neutral-200'
-                      }`}
-                    >
-                      {teacher.isActive ? 'فعال' : 'غیرفعال'}
-                    </span>
-                  </div>
-
-                  {/* Degree / Academic Info */}
-                  {teacher.degree && (
-                    <div className="flex items-center gap-1.5 text-xs text-neutral-600 mb-3 bg-neutral-50 p-2 rounded-xl border border-neutral-100">
-                      <Award size={14} className="text-indigo-500 shrink-0" />
-                      <span className="truncate">{teacher.degree}</span>
-                    </div>
-                  )}
-
-                  {/* Contact Info Pills */}
-                  <div className="flex flex-wrap items-center gap-2 mb-4 text-xs">
-                    {teacher.phone && (
-                      <a
-                        href={`tel:${teacher.phone}`}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-neutral-100/80 hover:bg-neutral-200/80 text-neutral-700 rounded-lg text-[11px] font-medium transition-colors"
-                        dir="ltr"
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
+                          teacher.isActive
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-neutral-100 text-neutral-500 border-neutral-200'
+                        }`}
                       >
-                        <Phone size={11} className="text-neutral-500" />
-                        <span>{toPersianDigits(teacher.phone)}</span>
-                      </a>
-                    )}
-                    {teacher.email && (
-                      <a
-                        href={`mailto:${teacher.email}`}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-neutral-100/80 hover:bg-neutral-200/80 text-neutral-700 rounded-lg text-[11px] font-medium transition-colors"
-                        dir="ltr"
-                      >
-                        <Mail size={11} className="text-neutral-500" />
-                        <span className="truncate max-w-[140px]">{teacher.email}</span>
-                      </a>
-                    )}
-                  </div>
-
-                  {/* Courses Taught Preview */}
-                  <div className="pt-3 border-t border-neutral-100">
-                    <div className="flex items-center justify-between text-xs mb-2">
-                      <span className="font-bold text-neutral-700 flex items-center gap-1.5">
-                        <BookOpen size={13} className="text-neutral-400" />
-                        <span>دوره‌های تحت تدریس</span>
+                        {teacher.isActive ? 'فعال' : 'غیرفعال'}
                       </span>
                       <button
                         type="button"
-                        onClick={() => setSelectedTeacherClasses(teacher)}
-                        className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
+                        onClick={() => toggleTeacherCollapse(teacher.id)}
+                        className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+                          isCollapsed
+                            ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
+                            : 'bg-neutral-50 border-neutral-200 text-neutral-500 hover:bg-neutral-100'
+                        }`}
+                        title={isCollapsed ? 'باز کردن کامل اطلاعات استاد' : 'جمع کردن این باکس'}
                       >
-                        {toPersianDigits(courses.length)} دوره ({toPersianDigits(studentsCount)} دانش‌آموز)
+                        {isCollapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
                       </button>
                     </div>
+                  </div>
 
-                    {courses.length === 0 ? (
-                      <p className="text-[11px] text-neutral-400 italic">هنوز کلاسی به این استاد متصل نشده است.</p>
-                    ) : (
-                      <div className="flex flex-wrap gap-1.5">
-                        {courses.slice(0, 2).map((c) => (
-                          <span
-                            key={c.id}
-                            className="inline-flex items-center gap-1 text-[11px] font-medium bg-neutral-100 text-neutral-700 px-2 py-0.5 rounded-md"
-                          >
-                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                            <span className="truncate max-w-[130px]">{c.name}</span>
+                  {/* Collapsed Compact View */}
+                  {isCollapsed ? (
+                    <div className="pt-2.5 mt-1 border-t border-neutral-100 flex items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                        <span className="font-extrabold text-indigo-900 text-[11px]">
+                          {toPersianDigits(courses.length)} دوره تدریس
+                        </span>
+                        <span className="text-[10px] font-bold text-neutral-500 bg-neutral-100 px-1.5 py-0.5 rounded">
+                          {toPersianDigits(studentsCount)} دانش‌آموز
+                        </span>
+                        {teacher.degree && (
+                          <span className="text-[10px] text-neutral-600 truncate max-w-[120px] hidden sm:inline" title={teacher.degree}>
+                            {teacher.degree}
                           </span>
-                        ))}
-                        {courses.length > 2 && (
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        {courses.length > 0 && (
                           <button
                             type="button"
                             onClick={() => setSelectedTeacherClasses(teacher)}
-                            className="text-[10px] font-bold text-neutral-500 bg-neutral-100 px-1.5 py-0.5 rounded-md hover:bg-neutral-200"
+                            className="p-1 text-indigo-700 hover:text-indigo-900 hover:bg-indigo-50 rounded-lg transition-colors text-[11px] font-bold flex items-center gap-1 px-1.5 cursor-pointer"
+                            title="مشاهده دوره‌ها"
                           >
-                            +{toPersianDigits(courses.length - 2)} دوره دیگر
+                            <BookOpen size={12} />
+                            <span>({toPersianDigits(courses.length)})</span>
                           </button>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => openForm(teacher)}
+                          disabled={isViewingArchived}
+                          className="p-1 text-neutral-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                          title="ویرایش استاد"
+                        >
+                          <Edit2 size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteConfirmId(teacher.id)}
+                          disabled={isViewingArchived}
+                          className="p-1 text-neutral-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          title="حذف استاد"
+                        >
+                          <Trash2 size={13} />
+                        </button>
                       </div>
-                    )}
-                  </div>
-                </div>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Degree / Academic Info */}
+                      {teacher.degree && (
+                        <div className="flex items-center gap-1.5 text-xs text-neutral-600 mb-3 bg-neutral-50 p-2 rounded-xl border border-neutral-100">
+                          <Award size={14} className="text-indigo-500 shrink-0" />
+                          <span className="truncate">{teacher.degree}</span>
+                        </div>
+                      )}
 
-                {/* Card Actions */}
-                <div className="flex items-center justify-end gap-1.5 pt-3.5 mt-3.5 border-t border-neutral-100">
-                  <button
-                    type="button"
-                    onClick={() => openForm(teacher)}
-                    disabled={isViewingArchived}
-                    className="p-1.5 text-neutral-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                    title="ویرایش اطلاعات استاد"
-                  >
-                    <Edit2 size={15} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDeleteConfirmId(teacher.id)}
-                    disabled={isViewingArchived}
-                    className="p-1.5 text-neutral-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                    title="حذف استاد"
-                  >
-                    <Trash2 size={15} />
-                  </button>
+                      {/* Contact Info Pills */}
+                      <div className="flex flex-wrap items-center gap-2 mb-4 text-xs">
+                        {teacher.phone && (
+                          <a
+                            href={`tel:${teacher.phone}`}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-neutral-100/80 hover:bg-neutral-200/80 text-neutral-700 rounded-lg text-[11px] font-medium transition-colors"
+                            dir="ltr"
+                          >
+                            <Phone size={11} className="text-neutral-500" />
+                            <span>{toPersianDigits(teacher.phone)}</span>
+                          </a>
+                        )}
+                        {teacher.email && (
+                          <a
+                            href={`mailto:${teacher.email}`}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-neutral-100/80 hover:bg-neutral-200/80 text-neutral-700 rounded-lg text-[11px] font-medium transition-colors"
+                            dir="ltr"
+                          >
+                            <Mail size={11} className="text-neutral-500" />
+                            <span className="truncate max-w-[140px]">{teacher.email}</span>
+                          </a>
+                        )}
+                      </div>
+
+                      {/* Courses Taught Preview */}
+                      <div className="pt-3 border-t border-neutral-100">
+                        <div className="flex items-center justify-between text-xs mb-2">
+                          <span className="font-bold text-neutral-700 flex items-center gap-1.5">
+                            <BookOpen size={13} className="text-neutral-400" />
+                            <span>دوره‌های تحت تدریس</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTeacherClasses(teacher)}
+                            className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                          >
+                            {toPersianDigits(courses.length)} دوره ({toPersianDigits(studentsCount)} دانش‌آموز)
+                          </button>
+                        </div>
+
+                        {courses.length === 0 ? (
+                          <p className="text-[11px] text-neutral-400 italic">هنوز کلاسی به این استاد متصل نشده است.</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-1.5">
+                            {courses.slice(0, 2).map((c) => (
+                              <span
+                                key={c.id}
+                                className="inline-flex items-center gap-1 text-[11px] font-medium bg-neutral-100 text-neutral-700 px-2 py-0.5 rounded-md"
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                                <span className="truncate max-w-[130px]">{c.name}</span>
+                              </span>
+                            ))}
+                            {courses.length > 2 && (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedTeacherClasses(teacher)}
+                                className="text-[10px] font-bold text-neutral-500 bg-neutral-100 px-1.5 py-0.5 rounded-md hover:bg-neutral-200 cursor-pointer"
+                              >
+                                +{toPersianDigits(courses.length - 2)} دوره دیگر
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Card Actions */}
+                      <div className="flex items-center justify-end gap-1.5 pt-3.5 mt-3.5 border-t border-neutral-100">
+                        <button
+                          type="button"
+                          onClick={() => openForm(teacher)}
+                          disabled={isViewingArchived}
+                          className="p-1.5 text-neutral-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                          title="ویرایش اطلاعات استاد"
+                        >
+                          <Edit2 size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteConfirmId(teacher.id)}
+                          disabled={isViewingArchived}
+                          className="p-1.5 text-neutral-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          title="حذف استاد"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             );
