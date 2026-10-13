@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from './store';
 import { useFieldSettings } from './Settings';
 import { toPersianDigits, formatToman, calculateClassDuration, parseSessionTimeRange, migrateSessionTimes } from './utils';
@@ -50,6 +50,11 @@ export const Classes: React.FC<ClassesProps> = ({ initialFilters }) => {
   const [formIsPackage, setFormIsPackage] = useState(false);
   const [formPackageCourseIds, setFormPackageCourseIds] = useState<string[]>([]);
   const [formError, setFormError] = useState('');
+
+  // Batch Package creation & assignment states
+  const [selectedBatchClassIds, setSelectedBatchClassIds] = useState<string[]>([]);
+  const [isAttachModalOpen, setIsAttachModalOpen] = useState(false);
+  const [targetPackageId, setTargetPackageId] = useState('');
 
   // LO-5: active (non-cancelled) registrations per bell in the CURRENT store.
   // Used as the minimum allowed capacity in the edit form so an admin can
@@ -141,9 +146,117 @@ export const Classes: React.FC<ClassesProps> = ({ initialFilters }) => {
     setIsModalOpen(true);
   };
 
+  const openPackageForm = () => {
+    setEditingClass(null);
+    setFormError('');
+    setFormName('');
+    setFormGrade(grades[0] || 'هفتم');
+    setFormTeacherId('');
+    setFormTeacher('دپارتمان اساتید پکیج تیزهوشان');
+    setFormTuition(35000000);
+    setFormIsPackage(true);
+    setFormPackageCourseIds([]);
+    setFormSessions([
+      {
+        id: `ses-${Date.now()}-1`,
+        kind: 'even',
+        label: 'زنگ جامع روزهای زوج',
+        days: 'شنبه، دوشنبه، چهارشنبه',
+        time: '۱۶:۰۰ الی ۱۹:۱۵ (۳ ساعت و ۱۵ دقیقه)',
+        startTime: '16:00',
+        endTime: '19:15',
+        durationMinutes: 195,
+        capacity: 30,
+      },
+      {
+        id: `ses-${Date.now()}-2`,
+        kind: 'odd',
+        label: 'زنگ جامع روزهای فرد',
+        days: 'یکشنبه، سه‌شنبه، پنجشنبه',
+        time: '۱۶:۰۰ الی ۱۹:۱۵ (۳ ساعت و ۱۵ دقیقه)',
+        startTime: '16:00',
+        endTime: '19:15',
+        durationMinutes: 195,
+        capacity: 30,
+      },
+    ]);
+    setIsModalOpen(true);
+  };
+
+  const handleToggleBatchSelect = (id: string) => {
+    setSelectedBatchClassIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleCreatePackageFromSelected = () => {
+    if (selectedBatchClassIds.length < 2) {
+      showToast('لطفاً حداقل ۲ درس را برای ساخت پکیج انتخاب فرمایید', 'info');
+      return;
+    }
+    const chosen = state.classes.filter((c) => selectedBatchClassIds.includes(c.id));
+    const targetGrade = chosen[0]?.grade || grades[0] || 'هفتم';
+    const sumTuition = chosen.reduce((acc, c) => acc + (c.tuition || 0), 0);
+
+    setEditingClass(null);
+    setFormError('');
+    setFormName(`پکیج طلایی پایه ${targetGrade} (${toPersianDigits(chosen.length)} درس تخصصی)`);
+    setFormGrade(targetGrade);
+    setFormTeacherId('');
+    setFormTeacher('دپارتمان اساتید پکیج تیزهوشان');
+    setFormTuition(sumTuition);
+    setFormIsPackage(true);
+    setFormPackageCourseIds(selectedBatchClassIds);
+    setFormSessions([
+      {
+        id: `ses-${Date.now()}-1`,
+        kind: 'even',
+        label: 'زنگ جامع روزهای زوج',
+        days: 'شنبه، دوشنبه، چهارشنبه',
+        time: '۱۶:۰۰ الی ۱۹:۱۵ (۳ ساعت و ۱۵ دقیقه)',
+        startTime: '16:00',
+        endTime: '19:15',
+        durationMinutes: 195,
+        capacity: 30,
+      },
+      {
+        id: `ses-${Date.now()}-2`,
+        kind: 'odd',
+        label: 'زنگ جامع روزهای فرد',
+        days: 'یکشنبه، سه‌شنبه، پنجشنبه',
+        time: '۱۶:۰۰ الی ۱۹:۱۵ (۳ ساعت و ۱۵ دقیقه)',
+        startTime: '16:00',
+        endTime: '19:15',
+        durationMinutes: 195,
+        capacity: 30,
+      },
+    ]);
+    setIsModalOpen(true);
+  };
+
+  const handleAttachToExistingPackage = (pkgId: string) => {
+    const targetPkg = state.classes.find((c) => c.id === pkgId);
+    if (!targetPkg) return;
+    const existingIds = new Set(targetPkg.packageCourseIds || []);
+    selectedBatchClassIds.forEach((id) => existingIds.add(id));
+    const updatedPkg: ClassRoom = {
+      ...targetPkg,
+      packageCourseIds: Array.from(existingIds),
+    };
+    dispatch({ type: 'UPDATE_CLASS', payload: updatedPkg });
+    showToast(`${toPersianDigits(selectedBatchClassIds.length)} درس با موفقیت به پکیج «${targetPkg.name}» اضافه شد`, 'success');
+    setSelectedBatchClassIds([]);
+    setIsAttachModalOpen(false);
+  };
+
   // Handle incoming deep-link action from notifications
+  const lastProcessedFilterRef = useRef<string>('');
   useEffect(() => {
     if (!initialFilters) return;
+    const filterKey = JSON.stringify(initialFilters);
+    if (lastProcessedFilterRef.current === filterKey) return;
+    lastProcessedFilterRef.current = filterKey;
+
     if (initialFilters.gradeFilter) {
       setGradeFilter(initialFilters.gradeFilter);
     }
@@ -156,7 +269,7 @@ export const Classes: React.FC<ClassesProps> = ({ initialFilters }) => {
         openForm(targetClass);
       }
     }
-  }, [initialFilters, state.classes]);
+  }, [initialFilters]);
 
   const handleAddSession = () => {
     setFormSessions((prev) => [
@@ -308,7 +421,7 @@ export const Classes: React.FC<ClassesProps> = ({ initialFilters }) => {
         ...editingClass,
         name: formName.trim(),
         grade: formGrade,
-        teacherId: formIsPackage ? undefined : (formTeacherId || undefined),
+        teacherId: (formIsPackage || formTeacherId === 'custom' || !formTeacherId) ? undefined : formTeacherId,
         teacher: formIsPackage ? (formTeacher.trim() || 'دپارتمان اساتید پکیج تیزهوشان') : formTeacher.trim(),
         tuition: formTuition,
         sessions: normalizedSessions,
@@ -322,7 +435,7 @@ export const Classes: React.FC<ClassesProps> = ({ initialFilters }) => {
         id: `cls-${Date.now()}`,
         name: formName.trim(),
         grade: formGrade,
-        teacherId: formIsPackage ? undefined : (formTeacherId || undefined),
+        teacherId: (formIsPackage || formTeacherId === 'custom' || !formTeacherId) ? undefined : formTeacherId,
         teacher: formIsPackage ? (formTeacher.trim() || 'دپارتمان اساتید پکیج تیزهوشان') : formTeacher.trim(),
         tuition: formTuition,
         sessions: normalizedSessions,
@@ -360,14 +473,75 @@ export const Classes: React.FC<ClassesProps> = ({ initialFilters }) => {
         <div className="flex items-center gap-2.5">
           <button
             type="button"
+            onClick={openPackageForm}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200/80 rounded-full hover:bg-indigo-100 transition-colors shadow-2xs cursor-pointer"
+          >
+            <Package size={14} className="text-indigo-600" />
+            <span>تعریف پکیج جامع</span>
+          </button>
+          <button
+            type="button"
             onClick={() => openForm()}
-            className="flex items-center gap-1.5 px-5 py-2 text-xs font-semibold text-white bg-neutral-900 rounded-full hover:bg-neutral-800 transition-colors shadow-xs"
+            className="flex items-center gap-1.5 px-5 py-2 text-xs font-semibold text-white bg-neutral-900 rounded-full hover:bg-neutral-800 transition-colors shadow-xs cursor-pointer"
           >
             <IconPlus size={15} />
             <span>تعریف دوره جدید</span>
           </button>
         </div>
       </div>
+
+      {/* Floating Batch Actions Bar for Secretaries */}
+      {selectedBatchClassIds.length > 0 && (
+        <div className="p-3.5 bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-900 text-white rounded-2xl shadow-xl flex flex-col sm:flex-row items-center justify-between gap-3 animate-fade-in border border-indigo-700/50">
+          <div className="flex items-center gap-2.5">
+            <span className="w-7 h-7 rounded-full bg-indigo-500/30 flex items-center justify-center font-bold text-xs font-mono border border-indigo-400/30">
+              {toPersianDigits(selectedBatchClassIds.length)}
+            </span>
+            <div>
+              <div className="text-xs font-bold font-heading">
+                {toPersianDigits(selectedBatchClassIds.length)} درس آموزشی انتخاب شده است
+              </div>
+              <div className="text-[11px] text-indigo-200">
+                می‌توانید این دروس را مستقیماً به یک پکیج جامع جدید تبدیل کرده یا به پکیج‌های قبلی متصل فرمایید.
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleCreatePackageFromSelected}
+              className="px-3.5 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+            >
+              <Package size={14} />
+              <span>تبدیل به پکیج جامع جدید</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const packages = state.classes.filter((c) => c.isPackage);
+                if (packages.length === 0) {
+                  showToast('هنوز هیچ پکیجی در سیستم تعریف نشده است. ابتدا یک پکیج جدید ایجاد کنید.', 'info');
+                  return;
+                }
+                setTargetPackageId(packages[0].id);
+                setIsAttachModalOpen(true);
+              }}
+              className="px-3.5 py-1.5 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <Layers size={14} />
+              <span>اتصال به پکیج موجود...</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedBatchClassIds([])}
+              className="px-2.5 py-1.5 text-xs text-indigo-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors cursor-pointer"
+            >
+              انصراف
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Filter Bar: Grade Tabs + Teacher Bank Selector */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -440,29 +614,58 @@ export const Classes: React.FC<ClassesProps> = ({ initialFilters }) => {
               classEnrolled += getSessionEnrolledCount(cls.id, s.id);
             });
 
+            const isBatchSelected = selectedBatchClassIds.includes(cls.id);
+            const parentPackages = state.classes.filter(
+              (p) => p.isPackage && p.packageCourseIds?.includes(cls.id)
+            );
+
             return (
               <div
                 key={cls.id}
-                className="bg-white rounded-3xl p-5 sm:p-6 border border-neutral-200/70 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
+                className={`bg-white rounded-3xl p-5 sm:p-6 border transition-all flex flex-col justify-between ${
+                  isBatchSelected
+                    ? 'border-indigo-500 ring-2 ring-indigo-400/40 shadow-md bg-indigo-50/20'
+                    : cls.isPackage
+                    ? 'border-indigo-200 bg-gradient-to-b from-indigo-50/20 to-white shadow-xs hover:shadow-md'
+                    : 'border-neutral-200/70 shadow-xs hover:shadow-md'
+                }`}
               >
                 <div>
                   {/* Header */}
                   <div className="flex items-start justify-between gap-3 mb-2">
-                    <div>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {cls.isPackage ? (
-                          <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2.5 py-0.5 rounded-md inline-flex items-center gap-1">
-                            <Package size={12} />
-                            <span>پکیج جامع ({toPersianDigits(cls.packageCourseIds?.length || 0)} درس)</span>
+                    <div className="flex items-start gap-2.5">
+                      {/* Checkbox for batch selection (for non-package classes) */}
+                      {!cls.isPackage && (
+                        <input
+                          type="checkbox"
+                          checked={isBatchSelected}
+                          onChange={() => handleToggleBatchSelect(cls.id)}
+                          className="mt-1 w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                          title="انتخاب جهت ساخت یا اتصال به پکیج"
+                        />
+                      )}
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {cls.isPackage ? (
+                            <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2.5 py-0.5 rounded-md inline-flex items-center gap-1">
+                              <Package size={12} />
+                              <span>پکیج جامع ({toPersianDigits(cls.packageCourseIds?.length || 0)} درس)</span>
+                            </span>
+                          ) : null}
+                          <span className="text-[11px] font-semibold text-[#0E7C5B] bg-emerald-50 px-2 py-0.5 rounded-md">
+                            پایه {cls.grade}
                           </span>
-                        ) : null}
-                        <span className="text-[11px] font-semibold text-[#0E7C5B] bg-emerald-50 px-2 py-0.5 rounded-md">
-                          پایه {cls.grade}
-                        </span>
+                          {/* Parent packages tag */}
+                          {!cls.isPackage && parentPackages.length > 0 && (
+                            <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md">
+                              عضو {toPersianDigits(parentPackages.length)} پکیج
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="text-base font-bold text-[#0A3528] mt-1.5 leading-snug">
+                          {cls.name}
+                        </h3>
                       </div>
-                      <h3 className="text-base font-bold text-[#0A3528] mt-1.5 leading-snug">
-                        {cls.name}
-                      </h3>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <button
@@ -987,6 +1190,70 @@ export const Classes: React.FC<ClassesProps> = ({ initialFilters }) => {
         confirmText="بله، حذف دوره"
         cancelText="انصراف"
       />
+
+      {/* Attach Selected Classes to Existing Package Modal */}
+      <Modal
+        isOpen={isAttachModalOpen}
+        onClose={() => setIsAttachModalOpen(false)}
+        title="اتصال دروس انتخابی به پکیج موجود"
+        maxWidth="lg"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-slate-600">
+            تعداد <strong>{toPersianDigits(selectedBatchClassIds.length)}</strong> درس انتخاب شده است. لطفاً پکیج جامعی که می‌خواهید این دروس به آن اضافه شوند را انتخاب نمایید:
+          </p>
+
+          <div className="space-y-2">
+            <label className="block text-xs font-bold text-slate-700">انتخاب پکیج مقصد:</label>
+            <select
+              value={targetPackageId}
+              onChange={(e) => setTargetPackageId(e.target.value)}
+              className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:border-indigo-500"
+            >
+              {state.classes
+                .filter((c) => c.isPackage)
+                .map((pkg) => (
+                  <option key={pkg.id} value={pkg.id}>
+                    {pkg.name} (پایه {pkg.grade}) - دارای {toPersianDigits(pkg.packageCourseIds?.length || 0)} درس فعلی
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          <div className="p-3 bg-indigo-50 rounded-xl border border-indigo-100 text-xs text-indigo-900 space-y-1">
+            <div className="font-bold flex items-center gap-1.5">
+              <Layers size={13} className="text-indigo-600" />
+              <span>دروس در حال اتصال:</span>
+            </div>
+            <div className="flex flex-wrap gap-1 pt-1">
+              {state.classes
+                .filter((c) => selectedBatchClassIds.includes(c.id))
+                .map((c) => (
+                  <span key={c.id} className="px-2 py-0.5 bg-white text-indigo-800 rounded-md border border-indigo-200 text-[11px]">
+                    {c.name}
+                  </span>
+                ))}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setIsAttachModalOpen(false)}
+              className="px-4 py-2 text-xs text-slate-500 hover:text-slate-700 rounded-lg cursor-pointer"
+            >
+              انصراف
+            </button>
+            <button
+              type="button"
+              onClick={() => handleAttachToExistingPackage(targetPackageId)}
+              className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition-colors cursor-pointer"
+            >
+              تأیید و اتصال به پکیج
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

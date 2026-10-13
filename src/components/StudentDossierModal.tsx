@@ -40,6 +40,8 @@ import {
   Sparkles,
   Calendar,
   Award,
+  Package,
+  Layers,
 } from 'lucide-react';
 import { PaymentDateModal } from './PaymentDateModal';
 
@@ -121,6 +123,15 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
   const [editNotes, setEditNotes] = useState('');
   const [isPrintReceiptOpen, setIsPrintReceiptOpen] = useState(false);
 
+  // Payment Date Modal state for on-the-spot Jalali date recording (declared before any early returns)
+  const [paymentModalItem, setPaymentModalItem] = useState<{
+    regId: string;
+    instId: string;
+    title: string;
+    amount: number;
+    dueDate: string;
+  } | null>(null);
+
   // Sync edit state when modal opens or active student/reg changes
   useEffect(() => {
     if (student) {
@@ -196,15 +207,6 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
       newStatus === 'approved' ? 'success' : 'info'
     );
   };
-
-  // Payment Date Modal state for on-the-spot Jalali date recording
-  const [paymentModalItem, setPaymentModalItem] = useState<{
-    regId: string;
-    instId: string;
-    title: string;
-    amount: number;
-    dueDate: string;
-  } | null>(null);
 
   // Toggle Installment Payment (handles specific registration)
   const handleToggleInstallment = (targetRegId: string, instId: string, isPaid: boolean) => {
@@ -800,9 +802,17 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
                           >
                             <div className="flex items-start justify-between gap-2">
                               <div>
-                                <h5 className="font-heading font-extrabold text-slate-900 text-xs">
-                                  {cls?.name || `دوره شماره ${toPersianDigits(idx + 1)}`}
-                                </h5>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <h5 className="font-heading font-extrabold text-slate-900 text-xs">
+                                    {cls?.name || `دوره شماره ${toPersianDigits(idx + 1)}`}
+                                  </h5>
+                                  {(r.isPackage || cls?.isPackage) && (
+                                    <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md inline-flex items-center gap-1">
+                                      <Package size={11} />
+                                      <span>پکیج جامع ({toPersianDigits(r.packageSelections?.length || cls?.packageCourseIds?.length || 0)} درس)</span>
+                                    </span>
+                                  )}
+                                </div>
                                 <p className="text-[11px] text-slate-500 mt-0.5">
                                   مدرس: <strong className="text-slate-700">{cls?.teacher || 'نامشخص'}</strong>
                                 </p>
@@ -827,19 +837,50 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
                               </div>
                             </div>
 
-                            <div className="p-2 bg-white rounded-xl border border-slate-100 text-xs space-y-1">
-                              <div className="flex items-center gap-1.5 text-slate-700">
-                                <Calendar size={13} className="text-slate-400 shrink-0" />
-                                <span>زنگ کلاسی:</span>
-                                <strong className="text-slate-900">
-                                  {ses ? `${ses.label} (${ses.days} - ${ses.time})` : 'تعیین نشده'}
-                                </strong>
+                            {/* Session Info or Subcourses Breakdown */}
+                            {r.isPackage && r.packageSelections && r.packageSelections.length > 0 ? (
+                              <div className="p-2.5 bg-white rounded-xl border border-indigo-100 text-xs space-y-2">
+                                <div className="text-[11px] font-bold text-indigo-950 flex items-center gap-1">
+                                  <Layers size={13} className="text-indigo-600" />
+                                  <span>برنامه هفتگی دروس تشکیل‌دهنده این پکیج:</span>
+                                </div>
+                                <div className="space-y-1.5">
+                                  {r.packageSelections.map((ps) => {
+                                    const subCls = getClassById(ps.classId);
+                                    const subSes = subCls?.sessions.find((s) => s.id === ps.sessionId);
+                                    return (
+                                      <div key={ps.classId} className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 p-1.5 bg-slate-50/70 rounded-lg border border-slate-100 text-[11px]">
+                                        <div className="font-bold text-slate-800">
+                                          {subCls?.name} <span className="text-slate-400 font-normal">({subCls?.teacher})</span>
+                                        </div>
+                                        <div className="text-slate-600 font-mono text-[10px] flex items-center gap-1">
+                                          <Calendar size={11} className="text-slate-400" />
+                                          <span>{subSes ? `${subSes.label} - ${subSes.days} (${subSes.time})` : 'تعیین نشده'}</span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
+                                  <span>کد ثبت‌نام پکیج: <strong className="font-mono text-slate-700">{r.code}</strong></span>
+                                  <span>تاریخ پذیرش: <strong className="font-mono text-slate-700">{toPersianDigits(r.date)}</strong></span>
+                                </div>
                               </div>
-                              <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
-                                <span>کد ثبت‌نام: <strong className="font-mono text-slate-700">{r.code}</strong></span>
-                                <span>تاریخ پذیرش: <strong className="font-mono text-slate-700">{toPersianDigits(r.date)}</strong></span>
+                            ) : (
+                              <div className="p-2 bg-white rounded-xl border border-slate-100 text-xs space-y-1">
+                                <div className="flex items-center gap-1.5 text-slate-700">
+                                  <Calendar size={13} className="text-slate-400 shrink-0" />
+                                  <span>زنگ کلاسی:</span>
+                                  <strong className="text-slate-900">
+                                    {ses ? `${ses.label} (${ses.days} - ${ses.time})` : 'تعیین نشده'}
+                                  </strong>
+                                </div>
+                                <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
+                                  <span>کد ثبت‌نام: <strong className="font-mono text-slate-700">{r.code}</strong></span>
+                                  <span>تاریخ پذیرش: <strong className="font-mono text-slate-700">{toPersianDigits(r.date)}</strong></span>
+                                </div>
                               </div>
-                            </div>
+                            )}
 
                             {/* Quick Status Toggle */}
                             <div className="flex items-center justify-between pt-0.5">
@@ -1439,10 +1480,43 @@ export const StudentDossierModal: React.FC<StudentDossierModalProps> = ({
                 <div>کد ملی: <strong className="font-mono">{toPersianDigits(student.nationalId)}</strong></div>
                 <div>پایه: <strong>{student.grade}</strong></div>
                 <div>نام پدر: <strong>{student.fatherName || 'نامشخص'}</strong></div>
-                <div>دوره: <strong>{classRoom?.name}</strong></div>
-                <div>مدرس: <strong>{classRoom?.teacher}</strong></div>
-                <div>زنگ: <strong>{session?.label}</strong></div>
-                <div>شهریه دوره: <strong>{formatToman(currentRegTotal)}</strong></div>
+                <div className="col-span-2">
+                  دوره: <strong>{classRoom?.name}</strong>
+                  {(reg.isPackage || classRoom?.isPackage) && (
+                    <span className="mr-1.5 px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-indigo-100 text-indigo-800">
+                      پکیج جامع چنددرسی
+                    </span>
+                  )}
+                </div>
+                <div>
+                  مدرس: <strong>{classRoom?.teacher}</strong>
+                </div>
+                <div>
+                  شهریه کل: <strong>{formatToman(currentRegTotal)}</strong>
+                </div>
+
+                {/* Subcourses in package */}
+                {reg.isPackage && reg.packageSelections && reg.packageSelections.length > 0 && (
+                  <div className="col-span-4 pt-2 border-t border-slate-200">
+                    <span className="text-[10px] font-bold text-indigo-950 block mb-1">
+                      دروس و زمان‌بندی زنگ‌های پکیج:
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                      {reg.packageSelections.map((ps) => {
+                        const subCls = getClassById(ps.classId);
+                        const subSes = subCls?.sessions.find((s) => s.id === ps.sessionId);
+                        return (
+                          <div key={ps.classId} className="p-1.5 bg-white rounded border border-slate-200 text-[10px]">
+                            <strong>{subCls?.name}</strong> ({subCls?.teacher})
+                            <div className="text-slate-500 mt-0.5 font-mono">
+                              {subSes ? `${subSes.label} (${subSes.days} - ${subSes.time})` : 'تعیین نشده'}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

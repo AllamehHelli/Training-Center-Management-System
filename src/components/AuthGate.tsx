@@ -20,8 +20,15 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
           const st = await serverApi.getState();
           window.dispatchEvent(new CustomEvent('helli:server-state', { detail: st }));
         } catch (e) { console.error('initial state load failed', e); }
-      } catch {
-        clearToken();
+      } catch (err: any) {
+        // Only clear token if unauthorized or forbidden; transient network errors or 500 should not kick user out
+        if (err?.status === 401 || err?.status === 403) {
+          clearToken();
+        } else {
+          console.warn('Network or server error during auth verification:', err?.message || err);
+          // If we had a token and it was a network error, keep current auth state
+          setAuthed(true);
+        }
       } finally {
         setChecking(false);
       }

@@ -61,8 +61,13 @@ export const Students: React.FC<StudentsProps> = ({ initialFilters }) => {
   const [counselorFilter, setCounselorFilter] = useState<'all' | 'unassigned' | string>('all');
 
   // Handle incoming deep-link action from notifications or command palette
+  const lastProcessedFilterRef = useRef<string>('');
   useEffect(() => {
     if (!initialFilters) return;
+    const filterKey = JSON.stringify(initialFilters);
+    if (lastProcessedFilterRef.current === filterKey) return;
+    lastProcessedFilterRef.current = filterKey;
+
     if (initialFilters.counselorFilter) {
       setCounselorFilter(initialFilters.counselorFilter);
     }
@@ -85,7 +90,7 @@ export const Students: React.FC<StudentsProps> = ({ initialFilters }) => {
         }
       }
     }
-  }, [initialFilters, state.students]);
+  }, [initialFilters]);
 
   // Modals
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);

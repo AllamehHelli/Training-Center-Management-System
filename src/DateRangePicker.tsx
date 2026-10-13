@@ -28,6 +28,12 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onChang
   const [customStart, setCustomStart] = useState(value.startDate || today);
   const [customEnd, setCustomEnd] = useState(value.endDate || today);
 
+  const [isCustomMode, setIsCustomMode] = useState(value.preset === 'custom');
+
+  useEffect(() => {
+    setIsCustomMode(value.preset === 'custom');
+  }, [value.preset]);
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
@@ -54,14 +60,17 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onChang
 
   const handleSelectPreset = (preset: DateFilterPreset) => {
     if (preset === 'all') {
+      setIsCustomMode(false);
       onChange({ preset: 'all' });
       setIsOpen(false);
       return;
     }
     if (preset === 'custom') {
+      setIsCustomMode(true);
       return;
     }
 
+    setIsCustomMode(false);
     let start = today;
     if (preset === 'month') {
       start = addDaysJalali(today, -30);
@@ -108,17 +117,19 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onChang
               type="button"
               onClick={() => handleSelectPreset(p.id)}
               className={`w-full text-right px-2.5 py-1.5 rounded-xl transition-colors flex items-center justify-between ${
-                value.preset === p.id
+                (value.preset === p.id && (!isCustomMode || p.id === 'custom')) || (isCustomMode && p.id === 'custom')
                   ? 'bg-neutral-100 text-neutral-900 font-bold'
                   : 'text-neutral-600 hover:bg-neutral-50'
               }`}
             >
               <span>{p.label}</span>
-              {value.preset === p.id && <span className="w-1.5 h-1.5 rounded-full bg-neutral-900" />}
+              {((value.preset === p.id && (!isCustomMode || p.id === 'custom')) || (isCustomMode && p.id === 'custom')) && (
+                <span className="w-1.5 h-1.5 rounded-full bg-neutral-900" />
+              )}
             </button>
           ))}
 
-          {value.preset === 'custom' && (
+          {isCustomMode && (
             <div className="pt-2 mt-1 border-t border-neutral-100 space-y-2 px-1">
               <div className="text-[11px] font-semibold text-neutral-700">
                 <span>تعیین بازه زمانی دلخواه:</span>

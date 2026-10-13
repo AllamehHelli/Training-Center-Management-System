@@ -675,6 +675,21 @@ export function buildPlanFromTemplate(
 // -------------------------------------------------------------
 // CSV Export & Import Utilities
 // -------------------------------------------------------------
+
+/**
+ * Escape a CSV value and guard against CSV / Formula Injection (=, +, -, @, tab)
+ */
+export function safeEscapeCsvCell(val: unknown): string {
+  if (val === null || val === undefined) return '""';
+  let s = typeof val === 'object' ? JSON.stringify(val) : String(val);
+  s = s.replace(/"/g, '""');
+  // Formula injection prevention: if first char is =, +, -, @, \t, or \r prepend a single quote
+  if (/^[=+\-@\t\r]/.test(s)) {
+    s = `'` + s;
+  }
+  return `"${s}"`;
+}
+
 export function downloadCSV(filename: string, content: string) {
   // UTF-8 BOM for Persian characters in Excel
   const blob = new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8;' });

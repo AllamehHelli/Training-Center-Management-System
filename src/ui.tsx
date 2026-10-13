@@ -182,18 +182,18 @@ export const Modal: React.FC<ModalProps> = ({
   }[maxWidth];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto no-print">
+    <div className="modal-root-container fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
       <div
-        className="fixed inset-0 bg-neutral-900/40 backdrop-blur-xs transition-opacity"
+        className="no-print fixed inset-0 bg-neutral-900/40 backdrop-blur-xs transition-opacity"
         onClick={onClose}
       />
       <div
         role="dialog"
         aria-modal="true"
-        className={`relative bg-white w-full ${maxWidthClass} rounded-3xl shadow-2xl border border-neutral-200/80 overflow-hidden transform transition-all my-8 z-10 flex flex-col max-h-[90vh]`}
+        className={`modal-dialog-box relative bg-white w-full ${maxWidthClass} rounded-3xl shadow-2xl border border-neutral-200/80 overflow-hidden transform transition-all my-8 z-10 flex flex-col max-h-[90vh]`}
       >
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-100 bg-neutral-50/50">
+        <div className="no-print flex items-center justify-between px-6 py-4 border-b border-neutral-100 bg-neutral-50/50">
           <h3 className="text-xl font-heading text-neutral-900 font-bold">{title}</h3>
           <button
             onClick={onClose}

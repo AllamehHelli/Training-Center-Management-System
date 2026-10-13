@@ -25,6 +25,33 @@ export interface LogEntry {
 const STORAGE_LOGS_KEY = 'helli_system_logs_v1';
 const MAX_LOGS = 600;
 
+function maskPii(obj: any): any {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj === 'string') {
+    return obj
+      .replace(/\b(\d{3})\d{4}(\d{3})\b/g, '$1****$2')
+      .replace(/\b(09\d{2})\d{4}(\d{3})\b/g, '$1****$2');
+  }
+  if (typeof obj === 'object') {
+    if (Array.isArray(obj)) return obj.map(maskPii);
+    const sanitized: Record<string, any> = {};
+    for (const [k, v] of Object.entries(obj)) {
+      const lower = k.toLowerCase();
+      if (lower.includes('password') || lower.includes('secret') || lower.includes('consumerkey') || lower.includes('token')) {
+        sanitized[k] = '***REDACTED***';
+      } else if (lower.includes('nationalid') && typeof v === 'string') {
+        sanitized[k] = v.replace(/(\d{3})\d{4}(\d{3})/, '$1****$2');
+      } else if (lower.includes('phone') && typeof v === 'string') {
+        sanitized[k] = v.replace(/(09\d{2})\d{4}(\d{3})/, '$1****$2');
+      } else {
+        sanitized[k] = maskPii(v);
+      }
+    }
+    return sanitized;
+  }
+  return obj;
+}
+
 class SystemLogger {
   private logs: LogEntry[] = [];
   private listeners: Set<(logs: LogEntry[]) => void> = new Set();
@@ -92,14 +119,19 @@ class SystemLogger {
   public log(level: LogLevel, category: LogCategory, message: string, details?: any, extra?: { status?: number; url?: string; durationMs?: number }) {
     const now = new Date();
     const jalaliTime = now.toLocaleTimeString('fa-IR', { hour12: false });
+    const sanitizedDetails = maskPii(details);
+    const sanitizedMessage = typeof message === 'string'
+      ? message.replace(/\b(\d{3})\d{4}(\d{3})\b/g, '$1****$2').replace(/\b(09\d{2})\d{4}(\d{3})\b/g, '$1****$2')
+      : message;
+
     const entry: LogEntry = {
       id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
       timestamp: now.toISOString(),
       jalaliTime,
       level,
       category,
-      message,
-      details,
+      message: sanitizedMessage,
+      details: sanitizedDetails,
       status: extra?.status,
       url: extra?.url,
       durationMs: extra?.durationMs,
@@ -175,8 +207,12 @@ class SystemLogger {
     const headers = ['شناسه', 'زمان میلادی', 'ساعت', 'سطح', 'دسته‌بندی', 'کد وضعیت', 'آدرس/عملیات', 'پیام', 'جزئیات'];
     const escapeCsv = (val: any) => {
       if (val === undefined || val === null) return '""';
-      const str = typeof val === 'object' ? JSON.stringify(val) : String(val);
-      return `"${str.replace(/"/g, '""')}"`;
+      let str = typeof val === 'object' ? JSON.stringify(val) : String(val);
+      str = str.replace(/"/g, '""');
+      if (/^[=+\-@\t\r]/.test(str)) {
+        str = `'` + str;
+      }
+      return `"${str}"`;
     };
 
     const rows = this.logs.map((l) => [

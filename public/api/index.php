@@ -14,6 +14,7 @@ date_default_timezone_set('Asia/Tehran');
 
 // هدرهای امنیت، CORS و جلوگیری از کش داده‌های حساس
 header('Content-Type: application/json; charset=utf-8');
+header('Vary: Origin');
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 if (!empty($origin)) {
     header("Access-Control-Allow-Origin: $origin");
@@ -22,7 +23,7 @@ if (!empty($origin)) {
     header('Access-Control-Allow-Origin: *');
 }
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-HTTP-Method-Override');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 
@@ -203,6 +204,16 @@ function ensureColumn($pdo, $table, $column, $definition) {
 function ensureDatabaseSchema($pdo, $adminPass) {
     if (!$pdo) return;
     try {
+        // بررسی یک‌باره وضعیت مهاجرت برای جلوگیری از اجرای کوئری‌های سنگین DDL در هر ریکوئست (P0-9)
+        try {
+            $migStmt = $pdo->query("SELECT version FROM schema_migrations WHERE id = 1");
+            if ($migStmt && (int)$migStmt->fetchColumn() >= 3) {
+                return; // دیتابیس قبلاً مهاجرت کرده و به‌روز است
+            }
+        } catch (\Throwable $mEx) {
+            // جدول مایگریشن هنوز ایجاد نشده، مراحل ادامه می‌یابد
+        }
+
         // ایجاد جداول اصلی در صورت عدم وجود
         $pdo->exec("
         CREATE TABLE IF NOT EXISTS users (
@@ -366,10 +377,21 @@ function ensureDatabaseSchema($pdo, $adminPass) {
         ensureColumn($pdo, 'academic_years', 'start_date', "VARCHAR(10) NOT NULL DEFAULT ''");
         ensureColumn($pdo, 'academic_years', 'end_date', "VARCHAR(10) NOT NULL DEFAULT ''");
 
-        // ثبت کاربر مدیر اولیه در صورت خالی بودن جدول کاربران
+        // ستون‌های پکیج‌های جامع چنددرسی
+        ensureColumn($pdo, 'classes', 'is_package', "TINYINT(1) NOT NULL DEFAULT 0");
+        ensureColumn($pdo, 'classes', 'package_course_ids', "JSON NULL");
+        ensureColumn($pdo, 'registrations', 'is_package', "TINYINT(1) NOT NULL DEFAULT 0");
+        ensureColumn($pdo, 'registrations', 'package_selections', "JSON NULL");
+
+        // ثبت کاربر مدیر اولیه در صورت خالی بودن جدول کاربران (P0-1)
         $userCount = (int)$pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
         if ($userCount === 0) {
-            $initialPass = !empty($adminPass) ? $adminPass : 'admin123';
+            if (!empty($adminPass)) {
+                $initialPass = $adminPass;
+            } else {
+                $initialPass = bin2hex(random_bytes(6)) . 'A1!'; // ساخت رمز رندوم و امن در صورت نبود ADMIN_PASSWORD
+                error_log("SECURITY NOTICE: Initial admin created with random password: " . $initialPass);
+            }
             $hash = password_hash($initialPass, PASSWORD_BCRYPT);
             $stmt = $pdo->prepare("INSERT INTO users (id, username, password_hash, display_name, role) VALUES (?, ?, ?, ?, 'admin')");
             $stmt->execute(['u_admin_01', 'admin', $hash, 'مدیر ارشد سامانه']);
@@ -384,11 +406,15 @@ function ensureDatabaseSchema($pdo, $adminPass) {
             setAppStateValue($pdo, 'viewingYearId', '1404-1405');
         }
 
-        // بررسی و درج ۵ داده نمونه اولیه استاندارد در صورت خالی بودن دیتابیس
-        $studentCount = (int)$pdo->query("SELECT COUNT(*) FROM students")->fetchColumn();
-        if ($studentCount === 0) {
-            seedFiveSampleData($pdo);
-        }
+        // اطمینان از وجود جدول و ثبت وضعیت مهاجرت برای کش شدن (P0-9)
+        $pdo->exec("
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            id INT PRIMARY KEY,
+            version INT NOT NULL,
+            migrated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        INSERT INTO schema_migrations (id, version) VALUES (1, 3) ON DUPLICATE KEY UPDATE version = 3;
+        ");
 
     } catch (Exception $e) {
         error_log("Schema initialization error: " . $e->getMessage());
@@ -657,28 +683,19 @@ function getAuthUser($pdo, $secret) {
     $payload = json_decode(b64UrlDec($parts[1]), true);
     if (!$payload || (isset($payload['exp']) && $payload['exp'] < time())) return null;
 
-    // تایید وضعیت فعال بودن کاربر در دیتابیس
+    // تایید وضعیت فعال بودن کاربر در دیتابیس (Fail-closed: کاربر غیرفعال یا حذف‌شده فوراً رد می‌شود) (P0-3)
     if ($pdo && !empty($payload['uid'])) {
-        $stmt = $pdo->prepare("SELECT id, role, display_name, is_active FROM users WHERE id = ? LIMIT 1");
+        $stmt = $pdo->prepare("SELECT id, username, role, display_name, is_active FROM users WHERE id = ? LIMIT 1");
         $stmt->execute([$payload['uid']]);
         $dbUser = $stmt->fetch();
-        if ($dbUser && $dbUser['is_active']) {
-            return [
-                'uid' => $dbUser['id'],
-                'username' => $payload['username'],
-                'role' => normalizeRole($dbUser['role'] ?: ($payload['role'] ?? 'admin')),
-                'name' => $dbUser['display_name'] ?: $payload['username']
-            ];
+        if (!$dbUser || !(int)$dbUser['is_active']) {
+            return null; // کاربر غیرفعال یا حذف‌شده بلافاصله دسترسی‌اش قطع می‌شود
         }
-    }
-
-    // در صورتی که کاربر قبلاً توکن معتبر دریافت کرده است (سازگاری با نشست‌های فعال)
-    if (!empty($payload['uid'])) {
         return [
-            'uid' => $payload['uid'],
-            'username' => $payload['username'] ?? 'admin',
-            'role' => normalizeRole($payload['role'] ?? 'admin'),
-            'name' => $payload['name'] ?? 'مدیر سامانه'
+            'uid' => $dbUser['id'],
+            'username' => $dbUser['username'],
+            'role' => normalizeRole($dbUser['role']),
+            'name' => $dbUser['display_name'] ?: $dbUser['username']
         ];
     }
 
@@ -686,11 +703,11 @@ function getAuthUser($pdo, $secret) {
 }
 
 /**
- * یکسان‌سازی نقش‌های کاربری (فارسی/انگلیسی) برای جلوگیری از عدم تطابق و خطای ۴۰۳
+ * یکسان‌سازی نقش‌های کاربری (Fail-closed: نقش خالی یا ناشناخته فاقد دسترسی است) (P0-3)
  */
 function normalizeRole($rawRole) {
     $r = strtolower(trim((string)$rawRole));
-    if (empty($r)) return 'admin';
+    if (empty($r)) return 'none';
     if (in_array($r, ['admin', 'superadmin', 'administrator', 'root', 'owner', 'مدیر', 'مدیر ارشد', 'مدیر سیستم', 'ادمین'], true)) {
         return 'admin';
     }
@@ -700,22 +717,24 @@ function normalizeRole($rawRole) {
     if (in_array($r, ['finance', 'accountant', 'حسابدار', 'امور مالی'], true)) {
         return 'finance';
     }
-    if (in_array($r, ['staff', 'employee', 'operator', 'کارشناس', 'کارمند', 'مسئول ثبت نام', 'اپراتور', 'user'], true)) {
+    if (in_array($r, ['staff', 'employee', 'operator', 'کارشناس', 'کارمند', 'مسئول ثبت نام', 'اپراتور'], true)) {
         return 'staff';
     }
-    return $r;
+    return 'none';
 }
 
 function requirePerm($user, $permission) {
-    $role = normalizeRole($user['role'] ?? 'admin');
+    $role = normalizeRole($user['role'] ?? 'none');
     if ($role === 'admin' || $role === 'manager') {
-        return; // مدیران دسترسی نامحدود به کلیه عملیات سیستم دارند
+        return; // مدیران دسترسی کامل دارند
     }
 
+    // ماتریس تفکیک وظایف بر مبنای اصل حداقل امتیاز (P0-4)
     $roleMatrix = [
-        'read'    => ['admin', 'manager', 'staff', 'finance', 'operator', 'user', 'teacher', 'counselor'],
-        'write'   => ['admin', 'manager', 'staff', 'finance', 'operator', 'user'],
-        'finance' => ['admin', 'manager', 'finance', 'staff', 'operator'],
+        'read'    => ['admin', 'manager', 'staff', 'finance', 'operator', 'teacher', 'counselor'],
+        'write'   => ['admin', 'manager', 'staff', 'operator'],
+        'finance' => ['admin', 'manager', 'finance'], // نقش کارمند/staff اجازه دسترسی به امور مالی را ندارد
+        'delete'  => ['admin', 'manager'],            // حذف رکوردها فقط با دسترسی مدیران مجاز است
         'years'   => ['admin', 'manager'],
         'admin'   => ['admin'],
     ];
@@ -831,6 +850,8 @@ function mapClass($r) {
         'day' => $r['day'] ?? '',
         'time' => $r['time'] ?? '',
         'sessions' => json_decode($r['sessions'], true) ?: [],
+        'isPackage' => !empty($r['is_package']),
+        'packageCourseIds' => !empty($r['package_course_ids']) ? (json_decode($r['package_course_ids'], true) ?: []) : [],
         'createdAt' => $r['created_at'],
         'updatedAt' => $r['updated_at'] ?? $r['created_at']
     ];
@@ -905,6 +926,8 @@ function mapReg($r) {
         'notes' => $r['notes'] ?? '',
         'wooOrderId' => $r['woo_order_id'] ?? null,
         'yearId' => $r['year_id'],
+        'isPackage' => !empty($r['is_package']),
+        'packageSelections' => !empty($r['package_selections']) ? (json_decode($r['package_selections'], true) ?: []) : [],
         'createdAt' => $r['created_at'],
         'updatedAt' => $r['updated_at'] ?? $r['created_at']
     ];
@@ -937,8 +960,10 @@ function getTodayJalaliString() {
     $days %= 12053;
     $jy += 4 * ((int)($days / 1461));
     $days %= 1461;
-    $jy += (int)(($days - 1) / 365);
-    $days = ($days - 1) % 365;
+    if ($days > 365) {
+        $jy += (int)(($days - 1) / 365);
+        $days = ($days - 1) % 365;
+    }
     $jm = ($days < 186) ? 1 + (int)($days / 31) : 7 + (int)(($days - 186) / 30);
     $jd = 1 + (($days < 186) ? ($days % 31) : (($days - 186) % 30));
     return sprintf('%04d/%02d/%02d', $jy, $jm, $jd);
@@ -964,6 +989,21 @@ function bumpEnrolledCounts($pdo, $classId) {
         foreach ($counts as $r) {
             $map[$r['session_id']] = (int)$r['c'];
         }
+
+        // شمارش ثبت‌نام‌های غیرمستقیم ناشی از پکیج‌های جامع چنددرسی
+        try {
+            $pkgStmt = $pdo->query("SELECT package_selections FROM registrations WHERE is_package = 1 AND status <> 'cancelled'");
+            while ($row = $pkgStmt->fetch()) {
+                $sels = json_decode($row['package_selections'] ?? '[]', true) ?: [];
+                foreach ($sels as $sel) {
+                    if (($sel['classId'] ?? '') === $classId && !empty($sel['sessionId'])) {
+                        $sid = $sel['sessionId'];
+                        $map[$sid] = ($map[$sid] ?? 0) + 1;
+                    }
+                }
+            }
+        } catch (\Throwable $pkgEx) { /* non-fatal */ }
+
         $sessions = json_decode($cls['sessions'], true) ?: [];
         foreach ($sessions as &$s) {
             $s['enrolledCount'] = $map[$s['id']] ?? 0;
@@ -1251,10 +1291,12 @@ if ($uri === '/classes' && $method === 'POST') {
     $c = $body;
     $sessions = $c['sessions'] ?? [];
     $capacity = array_reduce($sessions, fn($carry, $x) => $carry + ((int)($x['capacity'] ?? 0)), 0);
+    $isPkg = !empty($c['isPackage']) ? 1 : 0;
+    $pkgCourseIds = !empty($c['packageCourseIds']) ? json_encode($c['packageCourseIds'], JSON_UNESCAPED_UNICODE) : null;
 
     $stmt = $pdo->prepare("
-    INSERT INTO classes (id, name, grade, teacher, capacity, tuition, day, time, sessions, teacher_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO classes (id, name, grade, teacher, capacity, tuition, day, time, sessions, teacher_id, is_package, package_course_ids)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
     $stmt->execute([
         $c['id'],
@@ -1266,7 +1308,9 @@ if ($uri === '/classes' && $method === 'POST') {
         $c['day'] ?? '',
         $c['time'] ?? '',
         json_encode($sessions, JSON_UNESCAPED_UNICODE),
-        $c['teacherId'] ?? null
+        $c['teacherId'] ?? null,
+        $isPkg,
+        $pkgCourseIds
     ]);
     logAudit($pdo, $user['uid'], 'ADD_CLASS', 'class', $c['id'], ['name' => $c['name']]);
     jsonResp(['ok' => true, 'sessions' => $sessions]);
@@ -1278,6 +1322,8 @@ if (preg_match('#^/classes/([^/]+)$#', $uri, $m)) {
         requirePerm($user, 'write');
         $c = $body;
         $sessions = $c['sessions'] ?? [];
+        $isPkg = !empty($c['isPackage']) ? 1 : 0;
+        $pkgCourseIds = !empty($c['packageCourseIds']) ? json_encode($c['packageCourseIds'], JSON_UNESCAPED_UNICODE) : null;
 
         // گارد همخوانی ظرفیت با ثبت‌نام‌های جاری
         $countsStmt = $pdo->prepare("SELECT session_id, COUNT(*) c FROM registrations WHERE class_id = ? AND status <> 'cancelled' GROUP BY session_id");
@@ -1295,7 +1341,7 @@ if (preg_match('#^/classes/([^/]+)$#', $uri, $m)) {
         $capacity = array_reduce($sessions, fn($carry, $x) => $carry + ((int)($x['capacity'] ?? 0)), 0);
 
         $stmt = $pdo->prepare("
-        UPDATE classes SET name = ?, grade = ?, teacher = ?, capacity = ?, tuition = ?, day = ?, time = ?, sessions = ?, teacher_id = ?
+        UPDATE classes SET name = ?, grade = ?, teacher = ?, capacity = ?, tuition = ?, day = ?, time = ?, sessions = ?, teacher_id = ?, is_package = ?, package_course_ids = ?
         WHERE id = ?
         ");
         $stmt->execute([
@@ -1308,6 +1354,8 @@ if (preg_match('#^/classes/([^/]+)$#', $uri, $m)) {
             $c['time'] ?? '',
             json_encode($sessions, JSON_UNESCAPED_UNICODE),
             $c['teacherId'] ?? null,
+            $isPkg,
+            $pkgCourseIds,
             $id
         ]);
         logAudit($pdo, $user['uid'], 'UPDATE_CLASS', 'class', $id);
@@ -1535,9 +1583,12 @@ if ($uri === '/registrations' && $method === 'POST') {
         $discount = isset($r['discount']) ? (int)$r['discount'] : (int)($r['discountPercent'] ?? 0);
         $regDate = $r['date'] ?? getTodayJalaliString();
 
+        $isPkg = !empty($r['isPackage']) ? 1 : 0;
+        $pkgSelections = !empty($r['packageSelections']) ? json_encode($r['packageSelections'], JSON_UNESCAPED_UNICODE) : null;
+
         $stmt = $pdo->prepare("
-        INSERT INTO registrations (id, code, student_id, class_id, session_id, status, amount, discount, plan, reg_date, notes, woo_order_id, year_id, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO registrations (id, code, student_id, class_id, session_id, status, amount, discount, plan, reg_date, notes, woo_order_id, year_id, created_by, is_package, package_selections)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmt->execute([
             $r['id'],
@@ -1553,12 +1604,19 @@ if ($uri === '/registrations' && $method === 'POST') {
             $r['notes'] ?? '',
             $r['wooOrderId'] ?? null,
             $yearId,
-            $user['uid']
+            $user['uid'],
+            $isPkg,
+            $pkgSelections
         ]);
 
         $pdo->commit();
 
         if (!empty($r['classId'])) bumpEnrolledCounts($pdo, $r['classId']);
+        if ($isPkg && !empty($r['packageSelections'])) {
+            foreach ($r['packageSelections'] as $ps) {
+                if (!empty($ps['classId'])) bumpEnrolledCounts($pdo, $ps['classId']);
+            }
+        }
         logAudit($pdo, $user['uid'], 'ADD_REGISTRATION', 'registration', $r['id'], ['code' => $code]);
 
         jsonResp(['ok' => true, 'code' => $code, 'nextRegSeq' => $nextSeq]);
@@ -1575,7 +1633,7 @@ if (preg_match('#^/registrations/([^/]+)$#', $uri, $m)) {
         $r = $body;
 
         // بررسی گارد سال بایگانی
-        $checkStmt = $pdo->prepare("SELECT year_id, status, plan, amount, discount, notes, class_id, session_id, student_id FROM registrations WHERE id = ?");
+        $checkStmt = $pdo->prepare("SELECT year_id, status, plan, amount, discount, notes, class_id, session_id, student_id, is_package, package_selections FROM registrations WHERE id = ?");
         $checkStmt->execute([$id]);
         $existing = $checkStmt->fetch();
         if (!$existing) jsonResp(['error' => 'not-found'], 404);
@@ -1595,17 +1653,26 @@ if (preg_match('#^/registrations/([^/]+)$#', $uri, $m)) {
         $newDiscount = isset($r['discount']) ? (int)$r['discount'] : (int)$existing['discount'];
         $newClassId = $r['classId'] ?? $existing['class_id'];
         $newSessionId = $r['sessionId'] ?? $existing['session_id'];
+        $newIsPkg = isset($r['isPackage']) ? ($r['isPackage'] ? 1 : 0) : ($existing['is_package'] ?? 0);
+        $newPkgSelections = array_key_exists('packageSelections', $r)
+            ? (empty($r['packageSelections']) ? null : json_encode($r['packageSelections'], JSON_UNESCAPED_UNICODE))
+            : ($existing['package_selections'] ?? null);
 
         $up = $pdo->prepare("
         UPDATE registrations SET
-          status = ?, notes = ?, plan = ?, amount = ?, discount = ?, class_id = ?, session_id = ?
+          status = ?, notes = ?, plan = ?, amount = ?, discount = ?, class_id = ?, session_id = ?, is_package = ?, package_selections = ?
         WHERE id = ?
         ");
-        $up->execute([$newStatus, $newNotes, $newPlan, $newAmount, $newDiscount, $newClassId, $newSessionId, $id]);
+        $up->execute([$newStatus, $newNotes, $newPlan, $newAmount, $newDiscount, $newClassId, $newSessionId, $newIsPkg, $newPkgSelections, $id]);
 
         if (!empty($newClassId)) bumpEnrolledCounts($pdo, $newClassId);
         if (!empty($existing['class_id']) && $existing['class_id'] !== $newClassId) {
             bumpEnrolledCounts($pdo, $existing['class_id']);
+        }
+        if ($newIsPkg && !empty($r['packageSelections'])) {
+            foreach ($r['packageSelections'] as $ps) {
+                if (!empty($ps['classId'])) bumpEnrolledCounts($pdo, $ps['classId']);
+            }
         }
 
         logAudit($pdo, $user['uid'], 'UPDATE_REGISTRATION', 'registration', $id);
@@ -1613,7 +1680,7 @@ if (preg_match('#^/registrations/([^/]+)$#', $uri, $m)) {
     } elseif ($method === 'DELETE') {
         requirePerm($user, 'write');
         try {
-            $checkStmt = $pdo->prepare("SELECT year_id, class_id FROM registrations WHERE id = ?");
+            $checkStmt = $pdo->prepare("SELECT year_id, class_id, is_package, package_selections FROM registrations WHERE id = ?");
             $checkStmt->execute([$id]);
             $existing = $checkStmt->fetch();
 
@@ -1629,6 +1696,12 @@ if (preg_match('#^/registrations/([^/]+)$#', $uri, $m)) {
             $stmt = $pdo->prepare("DELETE FROM registrations WHERE id = ?");
             $stmt->execute([$id]);
             if (!empty($existing['class_id'])) bumpEnrolledCounts($pdo, $existing['class_id']);
+            if (!empty($existing['is_package']) && !empty($existing['package_selections'])) {
+                $psArr = json_decode($existing['package_selections'], true) ?: [];
+                foreach ($psArr as $ps) {
+                    if (!empty($ps['classId'])) bumpEnrolledCounts($pdo, $ps['classId']);
+                }
+            }
             logAudit($pdo, $user['uid'], 'DELETE_REGISTRATION', 'registration', $id);
             jsonResp(['ok' => true]);
         } catch (\Throwable $e) {

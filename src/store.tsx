@@ -169,6 +169,10 @@ export const MUTATING_ACTION_TYPES: ReadonlySet<AppAction['type']> = new Set<App
   'REFUND_INSTALLMENT',
   'RESTORE_FIVE_SAMPLES',
   'RESTORE_PRE_SYNC_SNAPSHOT',
+  'ARCHIVE_AND_START_NEW_YEAR',
+  'ADD_ACADEMIC_YEAR',
+  'UPDATE_ACADEMIC_YEAR',
+  'DELETE_ACADEMIC_YEAR',
   // CR-3: WooCommerce order sync creates students/registrations too, so it
   // must be blocked while an archived year is being viewed.
   'SYNC_WOO_ORDERS',
@@ -284,27 +288,15 @@ export type AppAction =
 
 
 function appReducer(state: AppState, action: AppAction): AppState {
-  // ادغام هوشمند هنگام بارگذاری از سرور: حفظ دانش‌آموزان و رکوردهای موجود محلی
+  // سرور منبع واحد و معتبر حقیقت است (Server Truth)
   if (action.type === 'HYDRATE_FROM_SERVER') {
-    const incomingStudents = action.payload.students || [];
-    const localStudents = state.students || [];
-    const studentMap = new Map<string, Student>();
-
-    // ابتدا دانش‌آموزان محلی ثبت می‌شوند
-    localStudents.forEach((s) => studentMap.set(s.id, s));
-    // سپس داده‌های دریافتی از سرور ادغام می‌شوند
-    incomingStudents.forEach((s) => {
-      const existing = studentMap.get(s.id) || (s.nationalId ? Array.from(studentMap.values()).find(st => st.nationalId === s.nationalId) : undefined);
-      if (existing) {
-        studentMap.set(existing.id, { ...existing, ...s });
-      } else {
-        studentMap.set(s.id, s);
-      }
-    });
-
     return {
       ...action.payload,
-      students: Array.from(studentMap.values()),
+      students: action.payload.students || [],
+      classes: action.payload.classes || [],
+      registrations: action.payload.registrations || [],
+      teachers: action.payload.teachers || [],
+      counselors: action.payload.counselors || [],
     };
   }
   // ------------------------------------------------------------------
@@ -1132,34 +1124,11 @@ export const AppProvider: React.FC<{
       const incomingClasses = Array.isArray(st.classes) ? st.classes : [];
       const incomingRegs = Array.isArray(st.registrations) ? st.registrations : [];
 
-      const isServerEmpty = incomingStudents.length === 0 && incomingClasses.length === 0 && incomingRegs.length === 0;
-      let finalStudents = incomingStudents;
-      let finalClasses = incomingClasses;
-      let finalRegs = incomingRegs;
-      let finalTeachers = (st.teachers && Array.isArray(st.teachers) && st.teachers.length > 0) ? st.teachers : stateRef.current.teachers || [];
-      let finalCounselors = (st.counselors && Array.isArray(st.counselors) && st.counselors.length > 0) ? st.counselors : stateRef.current.counselors || [];
-
-      if (isServerEmpty) {
-        logger.info('SYSTEM', 'پایگاه داده سرور خالی بود؛ ۵ داده نمونه استاندارد برای بررسی عملکرد سیستم بارگذاری شد.');
-        const five = getFiveStandardSampleData();
-        finalStudents = five.students;
-        finalClasses = five.classes;
-        finalRegs = five.registrations;
-        finalTeachers = five.teachers;
-        finalCounselors = five.counselors;
-
-        // ذخیره نمونه‌ها در دیتابیس در صورت لزوم (حداکثر یک‌بار در نشست برای پیشگیری از لوپ)
-        if (!hasAutoSeededRef.current) {
-          hasAutoSeededRef.current = true;
-          void serverApi.seedSamples()
-            .then(() => {
-              logger.info('SYNC', '۵ داده نمونه استاندارد با موفقیت در پایگاه داده سرور ثبت شد.');
-            })
-            .catch((err: any) => {
-              logger.warn('SYNC', `ثبت اولیه نمونه‌ها روی دیتابیس با تاخیر مواجه شد: ${err?.message || ''}`);
-            });
-        }
-      }
+      const finalStudents = incomingStudents;
+      const finalClasses = incomingClasses;
+      const finalRegs = incomingRegs;
+      const finalTeachers = Array.isArray(st.teachers) ? st.teachers : (stateRef.current.teachers || []);
+      const finalCounselors = Array.isArray(st.counselors) ? st.counselors : (stateRef.current.counselors || []);
 
       rawDispatch({
         type: 'HYDRATE_FROM_SERVER',
@@ -1173,7 +1142,7 @@ export const AppProvider: React.FC<{
           teachers: finalTeachers,
           counselors: finalCounselors,
           wooSettings: { ...(stateRef.current.wooSettings || {} as any), ...(st.settings?.wooPublic || {}) },
-          nextRegSeq: Math.max(Number(st.nextRegSeq || 0), isServerEmpty ? 105 : 0),
+          nextRegSeq: Number(st.nextRegSeq || 0),
         } as AppState,
       });
     };

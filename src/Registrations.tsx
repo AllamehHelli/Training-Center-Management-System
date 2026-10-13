@@ -38,7 +38,7 @@ import { JalaliDatePicker } from './JalaliDatePicker';
 import { PaymentDateModal } from './components/PaymentDateModal';
 import { StudentDossierModal } from './components/StudentDossierModal';
 import { WooCsvImportModal } from './components/WooCsvImportModal';
-import { GraduationCap, PlusCircle, FileSpreadsheet } from 'lucide-react';
+import { GraduationCap, PlusCircle, FileSpreadsheet, Package, Layers } from 'lucide-react';
 
 interface RegistrationsProps {
   /** ME-3: filters carried over from the dashboard "view all" action. */
@@ -115,6 +115,7 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters, on
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [selectedClassId, setSelectedClassId] = useState('');
   const [selectedSessionId, setSelectedSessionId] = useState('');
+  const [packageSessionSelections, setPackageSessionSelections] = useState<Record<string, string>>({});
   const [discountAmount, setDiscountAmount] = useState(0);
   const [selectedPlanId, setSelectedPlanId] = useState<string>('plan-cash');
   const [isCustomPlan, setIsCustomPlan] = useState(false);
@@ -192,8 +193,9 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters, on
   // Handle opening New Registration Modal
   const openNewRegistration = () => {
     const firstStudent = state.students[0]?.id || '';
-    const firstClass = state.classes[0]?.id || '';
-    const firstSession = state.classes[0]?.sessions[0]?.id || '';
+    const firstClassObj = state.classes[0];
+    const firstClass = firstClassObj?.id || '';
+    const firstSession = firstClassObj?.sessions[0]?.id || '';
 
     setSelectedStudentId(firstStudent);
     setSelectedClassId(firstClass);
@@ -208,6 +210,21 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters, on
     setRegistrationDate(getTodayJalali());
     setNotes('');
     setFormError('');
+
+    if (firstClassObj?.isPackage && firstClassObj.packageCourseIds) {
+      const initialMap: Record<string, string> = {};
+      firstClassObj.packageCourseIds.forEach((subId) => {
+        const subCls = getClassById(subId);
+        if (subCls && subCls.sessions.length > 0) {
+          const avail = subCls.sessions.find((s) => getSessionRemainingCapacity(subCls.id, s.id) > 0) || subCls.sessions[0];
+          initialMap[subId] = avail.id;
+        }
+      });
+      setPackageSessionSelections(initialMap);
+    } else {
+      setPackageSessionSelections({});
+    }
+
     setIsNewModalOpen(true);
   };
 
@@ -218,6 +235,20 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters, on
       setSelectedSessionId(cls.sessions[0].id);
     } else {
       setSelectedSessionId('');
+    }
+
+    if (cls?.isPackage && cls.packageCourseIds && cls.packageCourseIds.length > 0) {
+      const initialMap: Record<string, string> = {};
+      cls.packageCourseIds.forEach((subId) => {
+        const subCls = getClassById(subId);
+        if (subCls && subCls.sessions.length > 0) {
+          const avail = subCls.sessions.find((s) => getSessionRemainingCapacity(subCls.id, s.id) > 0) || subCls.sessions[0];
+          initialMap[subId] = avail.id;
+        }
+      });
+      setPackageSessionSelections(initialMap);
+    } else {
+      setPackageSessionSelections({});
     }
   };
 
@@ -233,29 +264,52 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters, on
       setFormError('لطفاً کلاس را انتخاب کنید');
       return;
     }
-    if (!selectedSessionId) {
-      setFormError('لطفاً زنگ برگزاری را انتخاب کنید');
-      return;
-    }
 
-    // Check capacity
-    const remaining = getSessionRemainingCapacity(selectedClassId, selectedSessionId);
-    if (remaining <= 0) {
-      setFormError('ظرفیت این زنگ تکمیل شده است. لطفاً زنگ دیگری را انتخاب فرمایید.');
-      return;
-    }
+    const isPkg = Boolean(selectedClass?.isPackage);
 
-    // Check duplicate registration in same session
-    const existing = state.registrations.find(
-      (r) =>
-        r.studentId === selectedStudentId &&
-        r.classId === selectedClassId &&
-        r.sessionId === selectedSessionId &&
-        r.status !== 'cancelled'
-    );
-    if (existing) {
-      setFormError('این دانش‌آموز قبلاً در این زنگ ثبت‌نام شده است.');
-      return;
+    if (isPkg) {
+      const subCourseIds = selectedClass?.packageCourseIds || [];
+      if (subCourseIds.length === 0) {
+        setFormError('این پکیج فاقد درس زیرمجموعه تعریف‌شده است.');
+        return;
+      }
+      for (const subId of subCourseIds) {
+        const subCls = getClassById(subId);
+        const sesId = packageSessionSelections[subId];
+        if (!sesId) {
+          setFormError(`لطفاً زنگ کلاسی درس «${subCls?.name || 'زیرمجموعه'}» را تعیین فرمایید.`);
+          return;
+        }
+        const remaining = getSessionRemainingCapacity(subId, sesId);
+        if (remaining <= 0) {
+          setFormError(`ظرفیت زنگ انتخابی برای درس «${subCls?.name || 'زیرمجموعه'}» تکمیل شده است.`);
+          return;
+        }
+      }
+    } else {
+      if (!selectedSessionId) {
+        setFormError('لطفاً زنگ برگزاری را انتخاب کنید');
+        return;
+      }
+      // Check capacity
+      const remaining = getSessionRemainingCapacity(selectedClassId, selectedSessionId);
+      if (remaining <= 0) {
+        setFormError('ظرفیت این زنگ تکمیل شده است. لطفاً زنگ دیگری را انتخاب فرمایید.');
+        return;
+      }
+
+      // Check duplicate registration in same session
+      const existing = state.registrations.find(
+        (r) =>
+          r.studentId === selectedStudentId &&
+          r.classId === selectedClassId &&
+          r.sessionId === selectedSessionId &&
+          r.status !== 'cancelled'
+      );
+      if (existing) {
+        setFormError('این دانش‌آموز قبلاً در این زنگ ثبت‌نام شده است.');
+        return;
+      }
     }
 
     const newCode = `T-${101 + state.registrations.length}`;
@@ -264,17 +318,29 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters, on
       code: newCode,
       studentId: selectedStudentId,
       classId: selectedClassId,
-      sessionId: selectedSessionId,
+      sessionId: isPkg ? (selectedClass?.sessions[0]?.id || 'ses-package-main') : selectedSessionId,
       status: 'approved',
       amount: previewPlan.totalAmount || netTuition,
       discount: discountAmount,
       plan: previewPlan,
       date: registrationDate || getTodayJalali(),
       notes: notes.trim(),
+      isPackage: isPkg,
+      packageSelections: isPkg
+        ? (selectedClass?.packageCourseIds || []).map((subId) => ({
+            classId: subId,
+            sessionId: packageSessionSelections[subId],
+          }))
+        : undefined,
     };
 
     dispatch({ type: 'ADD_REGISTRATION', payload: newReg });
-    showToast(`ثبت‌نام جدید با کد پیگیری ${newCode} با موفقیت ثبت شد`, 'success');
+    showToast(
+      isPkg
+        ? `ثبت‌نام پکیج جامع «${selectedClass?.name}» با موفقیت برای تمامی دروس تخصصی ثبت شد`
+        : `ثبت‌نام جدید با کد پیگیری ${newCode} با موفقیت ثبت شد`,
+      'success'
+    );
     setIsNewModalOpen(false);
     setReceiptRegistrationId(newReg.id);
   };
@@ -591,20 +657,34 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters, on
                       </td>
 
                       {/* Class & Session */}
-                      <td className="py-3 px-4 max-w-[200px]">
-                        <div className="font-medium text-slate-800 truncate">{classRoom?.name}</div>
-                        <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
-                          <span
-                            className={`w-2 h-2 rounded-full shrink-0 ${
-                              session?.kind === 'even'
-                                ? 'bg-[#0E7C5B]'
-                                : session?.kind === 'odd'
-                                ? 'bg-[#E9A13B]'
-                                : 'bg-[#3E7CB1]'
-                            }`}
-                          />
-                          <span className="truncate">{session?.label}</span>
+                      <td className="py-3 px-4 max-w-[220px]">
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="font-medium text-slate-800 truncate">{classRoom?.name}</span>
+                          {reg.isPackage && (
+                            <span className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.2 rounded-md font-bold shrink-0">
+                              پکیج جامع
+                            </span>
+                          )}
                         </div>
+                        {reg.isPackage ? (
+                          <div className="text-[11px] text-indigo-700 mt-0.5 flex items-center gap-1">
+                            <Layers size={11} className="shrink-0 text-indigo-500" />
+                            <span>شامل {toPersianDigits(reg.packageSelections?.length || classRoom?.packageCourseIds?.length || 0)} درس تخصصی</span>
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
+                            <span
+                              className={`w-2 h-2 rounded-full shrink-0 ${
+                                session?.kind === 'even'
+                                  ? 'bg-[#0E7C5B]'
+                                  : session?.kind === 'odd'
+                                  ? 'bg-[#E9A13B]'
+                                  : 'bg-[#3E7CB1]'
+                              }`}
+                            />
+                            <span className="truncate">{session?.label}</span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Tuition */}
@@ -777,8 +857,81 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters, on
             </div>
           </div>
 
-          {/* Sessions selector with Remaining Capacity */}
-          {selectedClass && (
+          {/* Package Sub-courses Sessions Selector or Standard Sessions Selector */}
+          {selectedClass && selectedClass.isPackage ? (
+            <div className="p-4 bg-indigo-50/70 rounded-2xl border border-indigo-200 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                <div className="flex items-center gap-2">
+                  <Package size={16} className="text-indigo-600" />
+                  <h4 className="text-xs font-bold text-indigo-950 font-heading">
+                    تعیین زنگ کلاسی دروس پکیج جامع ({toPersianDigits(selectedClass.packageCourseIds?.length || 0)} درس تخصصی)
+                  </h4>
+                </div>
+                <span className="text-[10px] bg-white text-indigo-700 px-2 py-0.5 rounded-md border border-indigo-200 font-bold w-fit">
+                  شهریه یکپارچه پکیج
+                </span>
+              </div>
+              <p className="text-[11px] text-indigo-800">
+                دانش‌آموز با این ثبت‌نام در لیست کلاسی اساتید هر یک از دروس زیر قرار می‌گیرد؛ لطفاً زنگ مورد نظر هر درس را تعیین نمایید:
+              </p>
+
+              <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                {(selectedClass.packageCourseIds || []).map((subId) => {
+                  const subCls = getClassById(subId);
+                  if (!subCls) return null;
+                  const currentSelectedSesId = packageSessionSelections[subId] || subCls.sessions[0]?.id;
+
+                  return (
+                    <div key={subId} className="p-3 bg-white rounded-xl border border-indigo-100 shadow-2xs space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-slate-900">{subCls.name}</span>
+                        <span className="text-[11px] text-slate-500">
+                          مدرس: <strong className="text-slate-800">{subCls.teacher}</strong>
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                        {subCls.sessions.map((ses) => {
+                          const enrolled = getSessionEnrolledCount(subCls.id, ses.id);
+                          const remaining = Math.max(0, ses.capacity - enrolled);
+                          const isFull = remaining === 0;
+                          const isSelected = currentSelectedSesId === ses.id;
+
+                          return (
+                            <div
+                              key={ses.id}
+                              onClick={() => {
+                                if (!isFull) {
+                                  setPackageSessionSelections((prev) => ({ ...prev, [subId]: ses.id }));
+                                }
+                              }}
+                              className={`p-2 rounded-lg border text-[11px] cursor-pointer transition-all ${
+                                isFull
+                                  ? 'opacity-50 bg-slate-100 border-slate-200 cursor-not-allowed'
+                                  : isSelected
+                                  ? 'border-indigo-600 bg-indigo-50/80 ring-1 ring-indigo-500 font-bold text-indigo-950'
+                                  : 'border-slate-200 hover:border-slate-300 bg-slate-50/50'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span>{ses.label}</span>
+                                <span className={`text-[10px] font-mono ${isFull ? 'text-red-600' : 'text-slate-500'}`}>
+                                  {isFull ? 'تکمیل' : `${toPersianDigits(remaining)} خالی`}
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-slate-500 mt-0.5 font-mono">
+                                {ses.days} · {ses.time}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : selectedClass ? (
             <div className="space-y-2">
               <label className="block text-xs font-semibold text-slate-700">
                 انتخاب زنگ برگزاری (ظرفیت و زمان‌بندی) <span className="text-[#D64545]">*</span>
@@ -832,7 +985,7 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters, on
                 })}
               </div>
             </div>
-          )}
+          ) : null}
 
           {/* Registration Date, Tuition & Discount */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
@@ -1208,14 +1361,48 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters, on
 
                     <div className="col-span-2">
                       <span className="text-[11px] text-slate-400 block">عنوان دوره:</span>
-                      <strong className="text-[#0A3528]">{classRoom?.name}</strong>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <strong className="text-[#0A3528]">{classRoom?.name}</strong>
+                        {receiptRegistration.isPackage && (
+                          <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-md">
+                            پکیج جامع چنددرسی
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="col-span-2">
-                      <span className="text-[11px] text-slate-400 block">زنگ و زمان برگزاری:</span>
+                      <span className="text-[11px] text-slate-400 block">
+                        {receiptRegistration.isPackage ? 'وضعیت زنگ‌های کلاسی:' : 'زنگ و زمان برگزاری:'}
+                      </span>
                       <span>
-                        {session?.label} ({session?.days} - ساعت {session?.time})
+                        {receiptRegistration.isPackage
+                          ? `اختصاص به ${toPersianDigits(receiptRegistration.packageSelections?.length || classRoom?.packageCourseIds?.length || 0)} کلاس تخصصی مستقل`
+                          : `${session?.label || 'نامشخص'} (${session?.days || ''} - ساعت ${session?.time || ''})`}
                       </span>
                     </div>
+
+                    {/* Breakdown of constituent package courses if package */}
+                    {receiptRegistration.isPackage && receiptRegistration.packageSelections && receiptRegistration.packageSelections.length > 0 && (
+                      <div className="col-span-4 pt-2 border-t border-slate-200">
+                        <span className="text-[11px] font-bold text-indigo-950 block mb-1.5">
+                          برنامه زنگ‌ها و اساتید دروس این پکیج:
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {receiptRegistration.packageSelections.map((ps) => {
+                            const subCls = getClassById(ps.classId);
+                            const subSes = subCls?.sessions.find((s) => s.id === ps.sessionId);
+                            return (
+                              <div key={ps.classId} className="p-2 bg-white rounded-lg border border-slate-200 text-[11px]">
+                                <div className="font-bold text-slate-900">{subCls?.name}</div>
+                                <div className="text-[10px] text-slate-500 mt-0.5">
+                                  استاد: <strong>{subCls?.teacher}</strong> · {subSes ? `${subSes.label} (${subSes.days} - ${subSes.time})` : 'زنگ تعیین نشده'}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Applied Payment Plan Info */}

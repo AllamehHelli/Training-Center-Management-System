@@ -76,6 +76,8 @@ CREATE TABLE IF NOT EXISTS classes (
   day       VARCHAR(32)  NOT NULL DEFAULT '',
   time      VARCHAR(32)  NOT NULL DEFAULT '',
   sessions  JSON         NULL,                  -- [{id,title,day,time,startTime,endTime,capacity,enrolledCount}]
+  is_package TINYINT(1)  NOT NULL DEFAULT 0,    -- فلگ دوره پکیج جامع چنددرسی
+  package_course_ids JSON NULL,                 -- شناسه‌های دروس مستقل تشکیل‌دهنده پکیج
   created_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY idx_classes_grade (grade)
@@ -95,6 +97,8 @@ CREATE TABLE IF NOT EXISTS registrations (
   discount_percent INT          NOT NULL DEFAULT 0,
   notes           TEXT          NULL,
   woo_order_id    VARCHAR(64)   NULL,           -- شناسه سفارش ووکامرس برای Idempotency (CR-3)
+  is_package      TINYINT(1)    NOT NULL DEFAULT 0, -- ثبت‌نام پکیج جامع
+  package_selections JSON       NULL,           -- انتخاب زنگ‌های هر یک از دروس پکیج [{classId, sessionId}]
   year_id         VARCHAR(36)   NOT NULL,
   created_by      VARCHAR(36)   NULL,
   created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,

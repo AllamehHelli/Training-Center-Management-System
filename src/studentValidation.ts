@@ -83,12 +83,12 @@ export function validateStudent(
   }
 
   // National ID: format + checksum + uniqueness
-  if (fieldSettings.nationalId) {
-    const nidCheck = validateNationalId(input.nationalId);
+  const cleanNid = toEnglishDigits(input.nationalId).trim();
+  if (fieldSettings.nationalId || cleanNid.length > 0) {
+    const nidCheck = validateNationalId(cleanNid);
     if (!nidCheck.isValid) {
       errors.nationalId = nidCheck.message;
     } else {
-      const cleanNid = toEnglishDigits(input.nationalId).trim();
       const dup = students.find(
         (s) => s.nationalId === cleanNid && s.id !== editingStudentId
       );
@@ -98,11 +98,11 @@ export function validateStudent(
     }
   }
 
-  // GPA: must be a number in [0, 20] when the field is enabled.
-  // Note: 0 is a legitimate value and must NOT be treated as "empty".
-  if (fieldSettings.gpa) {
+  // GPA: must be a number in [0, 20] when the field is enabled or provided
+  const gpaStr = String(input.gpa ?? '').trim();
+  if (fieldSettings.gpa || gpaStr.length > 0) {
     const gpaNum =
-      typeof input.gpa === 'number' ? input.gpa : parseFloat(toEnglishDigits(String(input.gpa)));
+      typeof input.gpa === 'number' ? input.gpa : parseFloat(toEnglishDigits(gpaStr));
     if (isNaN(gpaNum) || gpaNum < 0 || gpaNum > 20) {
       errors.gpa = 'معدل باید عددی بین ۰ تا ۲۰ باشد';
     }
@@ -160,7 +160,7 @@ export function buildStudentFromInput(
     nationalId: toEnglishDigits(input.nationalId).trim(),
     grade: input.grade as Student['grade'],
     // HI-2 fix: keep a legitimate 0 instead of falling back via `||`
-    gpa: isNaN(gpaNum) ? (typeof base.gpa === 'number' ? base.gpa : 20) : gpaNum,
+    gpa: isNaN(gpaNum) ? (typeof base.gpa === 'number' ? base.gpa : 0) : gpaNum,
     school: input.school.trim(),
     phones: (input.phones || [])
       .filter((p) => p.number.trim().length > 0)

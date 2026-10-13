@@ -8,7 +8,7 @@ import { AppProvider, useAppStore, DEMO_TOOLS_ENABLED } from './store';
 import { SettingsProvider } from './Settings';
 import { ToastProvider, useToast, ConfirmModal } from './ui';
 import { getTodayJalali, toPersianDigits, downloadCSV } from './utils';
-import { BACKEND_ENABLED, clearToken, getToken } from './api';
+import { BACKEND_ENABLED, clearToken, getToken, performLogout } from './api';
 import { logger } from './logger';
 import { SystemLogModal } from './components/SystemLogModal';
 
@@ -516,11 +516,8 @@ const AppContent: React.FC = () => {
               {BACKEND_ENABLED && getToken() && (
                 <button
                   type="button"
-                  onClick={() => {
-                    clearToken();
-                    window.location.reload();
-                  }}
-                  className="p-1.5 text-neutral-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors mr-1"
+                  onClick={() => performLogout()}
+                  className="p-1.5 text-neutral-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors mr-1 cursor-pointer"
                   title="خروج از سامانه"
                   aria-label="خروج از حساب کاربری"
                 >

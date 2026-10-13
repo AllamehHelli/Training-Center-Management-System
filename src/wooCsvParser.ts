@@ -156,16 +156,16 @@ export interface WooSyncPreviewResult {
  */
 export function normalizeGrade(gradeStr?: string): StudentGrade {
   const g = (gradeStr || '').trim();
-  if (g.includes('چهارم') || g.includes('4')) return 'چهارم';
-  if (g.includes('پنجم') || g.includes('5')) return 'پنجم';
-  if (g.includes('ششم') || g.includes('6')) return 'ششم';
-  if (g.includes('هفتم') || g.includes('7')) return 'هفتم';
-  if (g.includes('هشتم') || g.includes('8')) return 'هشتم';
-  if (g.includes('نهم') || g.includes('9')) return 'نهم';
-  if (g.includes('دهم') || g.includes('10')) return 'دهم';
-  if (g.includes('یازدهم') || g.includes('11')) return 'یازدهم';
   if (g.includes('دوازدهم') || g.includes('12')) return 'دوازدهم';
-  return 'ششم'; // پیش‌فرض برای تیزهوشان
+  if (g.includes('یازدهم') || g.includes('11')) return 'یازدهم';
+  if (g.includes('دهم') || g.includes('10')) return 'دهم';
+  if (g.includes('نهم') || g.includes('9')) return 'نهم';
+  if (g.includes('هشتم') || g.includes('8')) return 'هشتم';
+  if (g.includes('هفتم') || g.includes('7')) return 'هفتم';
+  if (g.includes('ششم') || g.includes('6')) return 'ششم';
+  if (g.includes('پنجم') || g.includes('5')) return 'پنجم';
+  if (g.includes('چهارم') || g.includes('4')) return 'چهارم';
+  return 'هفتم';
 }
 
 /**
@@ -181,18 +181,25 @@ export function cleanCourseTitle(title: string): string {
 }
 
 /**
- * تفکیک ستون اقلام سفارش به دوره‌های مستقل در صورت وجود پکیج چندتایی با علامت (-)
- * مثال:
- * دوره فیزیک پایه نهم | سمپاد پلاس (تعداد: 1) - دوره شیمی پایه نهم | سمپاد پلاس (تعداد: 1) - دوره ریاضی پایه نهم | سمپاد پلاس (تعداد: 1)
+ * تفکیک ستون اقلام سفارش به دوره‌های مستقل بدون تخریب اسامی دوره‌های دارای خط تیره
  */
 export function splitOrderItems(rawItems: string): string[] {
   if (!rawItems) return ['دوره آموزشی نامشخص'];
 
-  // تفکیک بر اساس خط تیره محصور در فاصله یا خط تیره ساده
-  const parts = rawItems.split(/\s*-\s*|\s*–\s*|\s*—\s*/);
+  let parts: string[] = [];
+  if (/[\r\n]+/.test(rawItems)) {
+    parts = rawItems.split(/[\r\n]+/);
+  } else if (/[،;,]/.test(rawItems)) {
+    parts = rawItems.split(/[،;,]+/);
+  } else if (/\s*[-–—]\s*(?=دوره|کلاس|پکیج|آموزش|\b[۰-۹a-zA-Z])/.test(rawItems)) {
+    parts = rawItems.split(/\s*[-–—]\s*(?=دوره|کلاس|پکیج|آموزش|\b[۰-۹a-zA-Z])/);
+  } else {
+    parts = [rawItems];
+  }
+
   const cleaned = parts
-    .map(p => cleanCourseTitle(p))
-    .filter(p => p.length >= 2);
+    .map((p) => cleanCourseTitle(p))
+    .filter((p) => p.length >= 2);
 
   return cleaned.length > 0 ? cleaned : [cleanCourseTitle(rawItems)];
 }
@@ -401,53 +408,83 @@ export function parseWooCommerceOrdersCsv(
   // ۱. ساخت یا به‌روزرسانی لیست دانش‌آموزان
   const studentsToUpsert: Student[] = [];
   const existingStudentByNid = new Map<string, Student>();
+  const existingStudentByMobile = new Map<string, Student>();
   const existingStudentByName = new Map<string, Student>();
 
   existingStudents.forEach((s) => {
     const n = toEnglishDigits(s.nationalId || '').trim();
     if (n) existingStudentByNid.set(n, s);
+    s.phones.forEach((p) => {
+      const cleanP = toEnglishDigits(p.number || '').replace(/\D/g, '');
+      if (cleanP) existingStudentByMobile.set(cleanP, s);
+    });
     const fullN = normalizeFullName(`${s.firstName} ${s.lastName}`);
-    if (fullN) existingStudentByName.set(fullN, s);
+    // Only index by name if the student has no national ID to avoid collision between different students with identical names
+    if (fullN && !n) existingStudentByName.set(fullN, s);
   });
 
+  const splitFirstLastName = (full: string): { firstName: string; lastName: string } => {
+    const parts = (full || '').trim().split(/\s+/);
+    if (parts.length <= 1) return { firstName: parts[0] || 'فراگیر', lastName: '' };
+    const lastName = parts.pop() || '';
+    const firstName = parts.join(' ');
+    return { firstName, lastName };
+  };
+
+  const hashKey = (str: string): string => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash << 5) - hash + str.charCodeAt(i);
+      hash |= 0;
+    }
+    return Math.abs(hash).toString(36);
+  };
+
   studentMap.forEach((sData, sKey) => {
-    // تطبیق با دانش‌آموز موجود بر اساس کد ملی یا نام کامل
+    // تطبیق با دانش‌آموز موجود: اولویت با کد ملی، سپس شماره همراه، و در صورت عدم وجود کد ملی بر اساس نام
     let existing = sData.nationalId ? existingStudentByNid.get(sData.nationalId) : undefined;
-    if (!existing) {
+    if (!existing && sData.mobile) {
+      existing = existingStudentByMobile.get(sData.mobile);
+    }
+    if (!existing && !sData.nationalId) {
       existing = existingStudentByName.get(normalizeFullName(sData.fullName));
     }
 
+    const { firstName, lastName } = splitFirstLastName(sData.fullName);
+
     if (existing) {
       // به‌روزرسانی مشخصات موجود بدون تخریب سایر داده‌ها
+      const existingPhones = [...existing.phones];
+      if (sData.mobile && !existingPhones.some((p) => p.number.replace(/\D/g, '') === sData.mobile)) {
+        existingPhones.push({ id: `p-${existing.id}-${Date.now()}`, label: 'موبایل ووکامرس', number: sData.mobile });
+      }
+
       studentsToUpsert.push({
         ...existing,
-        // نگهداری کل نام و نام خانوادگی به صورت کامل در firstName تا اسامی چند سیلابی مخدوش نشوند
-        firstName: sData.fullName,
-        lastName: '',
+        firstName: existing.firstName || firstName,
+        lastName: existing.lastName || lastName,
         nationalId: existing.nationalId || sData.nationalId,
-        phones: sData.mobile
-          ? [{ id: `p-${existing.id}`, label: 'موبایل ووکامرس', number: sData.mobile }]
-          : existing.phones,
-        grade: sData.grade || existing.grade,
-        birthDate: sData.birthDate || existing.birthDate,
+        phones: existingPhones,
+        grade: existing.grade || sData.grade,
+        birthDate: existing.birthDate || sData.birthDate,
       });
     } else {
       // ایجاد دانش‌آموز جدید با شناسه پایدار
       const studentId = sData.nationalId
         ? `std-woo-${sData.nationalId}`
-        : `std-woo-${sKey.replace(/[^a-zA-Z0-9-]/g, '') || Math.random().toString(36).substring(2, 9)}`;
+        : `std-woo-${hashKey(sKey + '-' + sData.fullName)}-${Math.random().toString(36).substring(2, 6)}`;
 
       studentsToUpsert.push({
         id: studentId,
-        firstName: sData.fullName,
-        lastName: '',
+        firstName,
+        lastName,
         fatherName: '', // در ثبت‌نام تکمیلی وارد خواهد شد
-        nationalId: sData.nationalId,
-        school: 'تیزهوشان',
-        gpa: 20,
+        nationalId: sData.nationalId || '',
+        school: '', // فیلد مدرسه تا زمان ثبت تکمیلی خالی می‌ماند (بدون مقادیر ساختگی)
+        gpa: 0,
         phones: sData.mobile ? [{ id: `p-${studentId}`, label: 'موبایل ووکامرس', number: sData.mobile }] : [],
-        grade: sData.grade,
-        birthDate: sData.birthDate,
+        grade: sData.grade || 'هفتم',
+        birthDate: sData.birthDate || '',
         createdAt: new Date().toISOString().slice(0, 10),
       });
     }

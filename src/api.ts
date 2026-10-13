@@ -11,6 +11,22 @@ export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (t: string) => localStorage.setItem(TOKEN_KEY, t);
 export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
 
+export function performLogout() {
+  clearToken();
+  try {
+    const toRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith('helli_') || k === 'institute_data_v1')) {
+        toRemove.push(k);
+      }
+    }
+    toRemove.forEach((k) => localStorage.removeItem(k));
+    sessionStorage.clear();
+  } catch {}
+  window.location.reload();
+}
+
 async function req<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
   const method = (init.method || 'GET').toUpperCase();
   const startTime = Date.now();
@@ -227,6 +243,34 @@ export async function syncAction(a: { type: string; payload?: any }): Promise<vo
         break;
       case 'DELETE_REGISTRATION':
         await serverApi.del(`/registrations/${a.payload.id ?? a.payload}`);
+        break;
+      case 'MARK_INSTALLMENT_PAID':
+        await serverApi.post(`/registrations/${a.payload.regId}/installments/${a.payload.instId}/pay`, {
+          paidDate: a.payload.paidAt,
+        });
+        break;
+      case 'REFUND_INSTALLMENT':
+        await serverApi.post(`/registrations/${a.payload.regId}/installments/${a.payload.instId}/refund`, {});
+        break;
+      case 'ARCHIVE_AND_START_NEW_YEAR': {
+        const p = a.payload as { newYear?: { id: string; title?: string; shortTitle?: string; periodLabel?: string }; archivedYearId?: string };
+        if (p.archivedYearId) {
+          await serverApi.post(`/years/${p.archivedYearId}/archive`, {});
+        }
+        if (p.newYear?.id) {
+          const label = p.newYear.periodLabel || p.newYear.title || p.newYear.shortTitle || '';
+          await serverApi.post('/years', { ...p.newYear, label, id: p.newYear.id });
+        }
+        break;
+      }
+      case 'ADD_ACADEMIC_YEAR':
+        await serverApi.post('/years', a.payload);
+        break;
+      case 'UPDATE_ACADEMIC_YEAR':
+        await serverApi.put(`/years/${a.payload.id}`, a.payload);
+        break;
+      case 'DELETE_ACADEMIC_YEAR':
+        await serverApi.del(`/years/${a.payload.id ?? a.payload}`);
         break;
       default:
         break;

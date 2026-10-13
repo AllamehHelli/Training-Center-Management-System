@@ -171,6 +171,26 @@ input, select, textarea, button, table, span, div, p, h1, h2, h3, h4, h5, h6, la
   .print-only {
     display: block !important;
   }
+  .modal-root-container {
+    position: static !important;
+    display: block !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    z-index: auto !important;
+  }
+  .modal-dialog-box {
+    position: static !important;
+    max-height: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 0 !important;
+  }
   .print-area {
     width: 100% !important;
     margin: 0 !important;
