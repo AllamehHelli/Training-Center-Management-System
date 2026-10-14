@@ -493,18 +493,21 @@ export function jalaliToDate(jalaliStr: string): Date {
   return new Date(gy, gm - 1, gd, 12, 0, 0);
 }
 
-// Check if an installment is overdue
+// Check if an installment is overdue (BUG-11: normalize Persian/English digits)
 export function isOverdue(dueDate: string, paidAt: string | null): boolean {
-  if (paidAt) return false;
-  const today = getTodayJalali();
-  return dueDate < today;
+  if (paidAt || !dueDate) return false;
+  const normalizedDue = toEnglishDigits(dueDate.trim());
+  const today = toEnglishDigits(getTodayJalali());
+  return normalizedDue < today;
 }
 
-// Calculate days overdue
+// Calculate days overdue (BUG-11: normalize digits)
 export function daysOverdue(dueDate: string): number {
-  const today = getTodayJalali();
-  if (dueDate >= today) return 0;
-  const d1 = jalaliToDate(dueDate);
+  if (!dueDate) return 0;
+  const normalizedDue = toEnglishDigits(dueDate.trim());
+  const today = toEnglishDigits(getTodayJalali());
+  if (normalizedDue >= today) return 0;
+  const d1 = jalaliToDate(normalizedDue);
   const d2 = jalaliToDate(today);
   const diffTime = Math.abs(d2.getTime() - d1.getTime());
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));

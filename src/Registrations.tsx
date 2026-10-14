@@ -16,9 +16,11 @@ import {
   buildPlan,
   buildPlanFromTemplate,
   downloadCSV,
+  safeEscapeCsvCell,
   isOverdue,
   daysOverdue,
 } from './utils';
+import { maxRegistrationSeq, makeRegistrationCode } from './data';
 import { Registration, RegistrationStatus, PaymentPlan, PaymentPlanTemplate } from './types';
 import { Modal, ConfirmModal, Avatar, ProgressBar, useToast, InfoTooltip } from './ui';
 import {
@@ -267,6 +269,18 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters, on
 
     const isPkg = Boolean(selectedClass?.isPackage);
 
+    // BUG-16: بررسی عدم ثبت‌نام تکراری دانش‌آموز در این دوره (هم برای پکیج‌های جامع و هم تک‌دوره‌ها)
+    const duplicateReg = state.registrations.find(
+      (r) =>
+        r.studentId === selectedStudentId &&
+        r.classId === selectedClassId &&
+        r.status !== 'cancelled'
+    );
+    if (duplicateReg) {
+      setFormError(isPkg ? 'این دانش‌آموز قبلاً در این پکیج جامع ثبت‌نام شده است.' : 'این دانش‌آموز قبلاً در این دوره آموزشی ثبت‌نام شده است.');
+      return;
+    }
+
     if (isPkg) {
       const subCourseIds = selectedClass?.packageCourseIds || [];
       if (subCourseIds.length === 0) {
@@ -297,22 +311,13 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters, on
         setFormError('ظرفیت این زنگ تکمیل شده است. لطفاً زنگ دیگری را انتخاب فرمایید.');
         return;
       }
-
-      // Check duplicate registration in same session
-      const existing = state.registrations.find(
-        (r) =>
-          r.studentId === selectedStudentId &&
-          r.classId === selectedClassId &&
-          r.sessionId === selectedSessionId &&
-          r.status !== 'cancelled'
-      );
-      if (existing) {
-        setFormError('این دانش‌آموز قبلاً در این زنگ ثبت‌نام شده است.');
-        return;
-      }
     }
 
-    const newCode = `T-${101 + state.registrations.length}`;
+    // BUG-15: تولید کد پیگیری استاندارد یکتا و هماهنگ با سرور و رسید
+    const currentJalaliYear = parseInt(getTodayJalali().split('/')[0], 10) || 1405;
+    const nextSeq = Math.max(state.nextRegSeq || 100, maxRegistrationSeq(state.registrations.map((r) => r.code))) + 1;
+    const newCode = makeRegistrationCode(currentJalaliYear, nextSeq);
+
     const newReg: Registration = {
       id: `reg-${Date.now()}`,
       code: newCode,
@@ -337,7 +342,7 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters, on
     dispatch({ type: 'ADD_REGISTRATION', payload: newReg });
     showToast(
       isPkg
-        ? `ثبت‌نام پکیج جامع «${selectedClass?.name}» با موفقیت برای تمامی دروس تخصصی ثبت شد`
+        ? `ثبت‌نام پکیج جامع «${selectedClass?.name}» با کد پیگیری ${newCode} با موفقیت ثبت شد`
         : `ثبت‌نام جدید با کد پیگیری ${newCode} با موفقیت ثبت شد`,
       'success'
     );
@@ -345,7 +350,7 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters, on
     setReceiptRegistrationId(newReg.id);
   };
 
-  // CSV Export
+  // CSV Export (BUG-10: خنثی‌سازی حملات تزریق فرمول در اکسل)
   const handleExportCSV = () => {
     const headers = [
       'کد پیگیری',
@@ -371,20 +376,20 @@ export const Registrations: React.FC<RegistrationsProps> = ({ initialFilters, on
       const planFa = reg.plan.months === 0 ? 'نقدی' : `${reg.plan.months} ماهه`;
 
       return [
-        `"${reg.code}"`,
-        `"${studentName}"`,
-        `"${nid}"`,
-        `"${classRoom?.name || ''}"`,
-        `"${session?.label || ''}"`,
-        `"${reg.amount}"`,
-        `"${reg.discount}"`,
-        `"${planFa}"`,
-        `"${statusFa}"`,
-        `"${reg.date}"`,
+        safeEscapeCsvCell(reg.code),
+        safeEscapeCsvCell(studentName),
+        safeEscapeCsvCell(nid),
+        safeEscapeCsvCell(classRoom?.name || ''),
+        safeEscapeCsvCell(session?.label || ''),
+        safeEscapeCsvCell(reg.amount),
+        safeEscapeCsvCell(reg.discount),
+        safeEscapeCsvCell(planFa),
+        safeEscapeCsvCell(statusFa),
+        safeEscapeCsvCell(reg.date),
       ].join(',');
     });
 
-    const csvContent = [headers.join(','), ...rows].join('\n');
+    const csvContent = [headers.map(safeEscapeCsvCell).join(','), ...rows].join('\n');
     downloadCSV(`registrations-${getTodayJalali().replace(/\//g, '-')}.csv`, csvContent);
     showToast('فایل اکسل (CSV) با موفقیت دانلود شد', 'info');
   };

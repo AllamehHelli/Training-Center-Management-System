@@ -12,16 +12,90 @@ error_reporting(E_ALL);
 // منطقه زمانی رسمی سامانه
 date_default_timezone_set('Asia/Tehran');
 
-// هدرهای امنیت، CORS و جلوگیری از کش داده‌های حساس
+// ۱. بارگذاری متغیرهای محیطی و فایل‌های پیکربندی (.env و config.php)
+function loadEnvVariables() {
+    $loaded = [];
+    $configFiles = [
+        __DIR__ . '/config.php',
+        __DIR__ . '/../config.php',
+    ];
+    foreach ($configFiles as $cf) {
+        if (file_exists($cf) && is_readable($cf)) {
+            $cData = @include $cf;
+            if (is_array($cData)) {
+                if (!empty($cData['db']['host'])) $loaded['DB_HOST'] = $cData['db']['host'];
+                if (!empty($cData['db']['port'])) $loaded['DB_PORT'] = (string)$cData['db']['port'];
+                if (!empty($cData['db']['dbname'])) $loaded['DB_NAME'] = $cData['db']['dbname'];
+                if (!empty($cData['db']['user'])) $loaded['DB_USER'] = $cData['db']['user'];
+                if (!empty($cData['db']['pass'])) $loaded['DB_PASS'] = $cData['db']['pass'];
+                if (!empty($cData['jwt_secret'])) $loaded['JWT_SECRET'] = $cData['jwt_secret'];
+                if (!empty($cData['woo']['store_url'])) $loaded['WOO_STORE_URL'] = $cData['woo']['store_url'];
+                if (!empty($cData['woo']['consumer_key'])) $loaded['WOO_CONSUMER_KEY'] = $cData['woo']['consumer_key'];
+                if (!empty($cData['woo']['consumer_secret'])) $loaded['WOO_CONSUMER_SECRET'] = $cData['woo']['consumer_secret'];
+                if (!empty($cData['cors_allowed_origins'])) $loaded['CORS_ALLOWED_ORIGINS'] = $cData['cors_allowed_origins'];
+            }
+        }
+    }
+
+    $possiblePaths = [
+        dirname(__DIR__, 2) . '/.env',
+        __DIR__ . '/../.env',
+        __DIR__ . '/.env',
+        isset($_SERVER['DOCUMENT_ROOT']) ? $_SERVER['DOCUMENT_ROOT'] . '/.env' : ''
+    ];
+
+    foreach ($possiblePaths as $p) {
+        if (!empty($p) && file_exists($p) && is_readable($p)) {
+            $lines = file($p, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            foreach ($lines as $line) {
+                $line = trim($line);
+                if ($line === '' || strpos($line, '#') === 0) continue;
+                if (strpos($line, '=') !== false) {
+                    list($key, $val) = explode('=', $line, 2);
+                    $key = trim($key);
+                    $val = trim($val);
+                    if ((substr($val, 0, 1) === '"' && substr($val, -1) === '"') ||
+                        (substr($val, 0, 1) === "'" && substr($val, -1) === "'")) {
+                        $val = substr($val, 1, -1);
+                    }
+                    if (!isset($loaded[$key])) {
+                        $loaded[$key] = $val;
+                        putenv("$key=$val");
+                        $_ENV[$key] = $val;
+                        $_SERVER[$key] = $val;
+                    }
+                }
+            }
+        }
+    }
+    return $loaded;
+}
+
+$env = loadEnvVariables();
+
+function envVal($key, $default = '') {
+    global $env;
+    $v = getenv($key);
+    if ($v !== false && $v !== '') return $v;
+    if (isset($env[$key]) && $env[$key] !== '') return $env[$key];
+    return $default;
+}
+
+// هدرهای امنیت، CORS و جلوگیری از کش داده‌های حساس (BUG-01)
 header('Content-Type: application/json; charset=utf-8');
 header('Vary: Origin');
+
+$rawAllowed = envVal('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://localhost:5173,https://ais-dev-5gedhzjsg6vaw2ua547vyk-251111016221.europe-west2.run.app,https://ais-pre-5gedhzjsg6vaw2ua547vyk-251111016221.europe-west2.run.app');
+$allowedOrigins = array_filter(array_map('trim', explode(',', $rawAllowed)));
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-if (!empty($origin)) {
+
+if (!empty($origin) && (in_array($origin, $allowedOrigins, true) || in_array('*', $allowedOrigins, true))) {
     header("Access-Control-Allow-Origin: $origin");
     header('Access-Control-Allow-Credentials: true');
-} else {
+} elseif (empty($origin)) {
     header('Access-Control-Allow-Origin: *');
 }
+
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-HTTP-Method-Override');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -61,62 +135,21 @@ function parseJsonBody() {
     return is_array($data) ? $data : [];
 }
 
-// -------------------------------------------------------------
-// ۱. بارگذاری ایمن متغیرهای محیطی (.env)
-// -------------------------------------------------------------
-function loadEnvVariables() {
-    $possiblePaths = [
-        dirname(__DIR__, 2) . '/.env',
-        __DIR__ . '/../.env',
-        __DIR__ . '/.env',
-        isset($_SERVER['DOCUMENT_ROOT']) ? $_SERVER['DOCUMENT_ROOT'] . '/.env' : ''
-    ];
-
-    $loaded = [];
-    foreach ($possiblePaths as $p) {
-        if (!empty($p) && file_exists($p) && is_readable($p)) {
-            $lines = file($p, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-            foreach ($lines as $line) {
-                $line = trim($line);
-                if ($line === '' || strpos($line, '#') === 0) continue;
-                if (strpos($line, '=') !== false) {
-                    list($key, $val) = explode('=', $line, 2);
-                    $key = trim($key);
-                    $val = trim($val);
-                    if ((substr($val, 0, 1) === '"' && substr($val, -1) === '"') ||
-                        (substr($val, 0, 1) === "'" && substr($val, -1) === "'")) {
-                        $val = substr($val, 1, -1);
-                    }
-                    if (!isset($loaded[$key])) {
-                        $loaded[$key] = $val;
-                        putenv("$key=$val");
-                        $_ENV[$key] = $val;
-                        $_SERVER[$key] = $val;
-                    }
-                }
-            }
-        }
-    }
-    return $loaded;
-}
-
-$env = loadEnvVariables();
-
 $config = [
     'db' => [
-        'host' => getenv('DB_HOST') ?: ($env['DB_HOST'] ?? 'localhost'),
-        'port' => getenv('DB_PORT') ?: ($env['DB_PORT'] ?? '3306'),
-        'dbname' => getenv('DB_NAME') ?: ($env['DB_NAME'] ?? ''),
-        'user' => getenv('DB_USER') ?: ($env['DB_USER'] ?? ''),
-        'pass' => getenv('DB_PASS') ?: ($env['DB_PASS'] ?? ''),
+        'host' => envVal('DB_HOST', 'localhost'),
+        'port' => envVal('DB_PORT', '3306'),
+        'dbname' => envVal('DB_NAME', ''),
+        'user' => envVal('DB_USER', ''),
+        'pass' => envVal('DB_PASS', ''),
         'charset' => 'utf8mb4'
     ],
-    'jwt_secret' => getenv('JWT_SECRET') ?: ($env['JWT_SECRET'] ?? ''),
-    'admin_password' => getenv('ADMIN_PASSWORD') ?: ($env['ADMIN_PASSWORD'] ?? ''),
+    'jwt_secret' => envVal('JWT_SECRET', ''),
+    'admin_password' => envVal('ADMIN_PASSWORD', ''),
     'woo' => [
-        'store_url' => getenv('WOO_STORE_URL') ?: ($env['WOO_STORE_URL'] ?? ''),
-        'consumer_key' => getenv('WOO_CONSUMER_KEY') ?: ($env['WOO_CONSUMER_KEY'] ?? ''),
-        'consumer_secret' => getenv('WOO_CONSUMER_SECRET') ?: ($env['WOO_CONSUMER_SECRET'] ?? ''),
+        'store_url' => envVal('WOO_STORE_URL', ''),
+        'consumer_key' => envVal('WOO_CONSUMER_KEY', ''),
+        'consumer_secret' => envVal('WOO_CONSUMER_SECRET', ''),
     ],
 ];
 
@@ -307,6 +340,7 @@ function ensureDatabaseSchema($pdo, $adminPass) {
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           UNIQUE KEY uq_reg_code (code),
+          UNIQUE KEY uq_reg_woo_order (woo_order_id),
           KEY idx_reg_year (year_id),
           KEY idx_reg_student (student_id),
           KEY idx_reg_class (class_id)
@@ -618,7 +652,8 @@ function seedFiveSampleData($pdo) {
             error_log("Seed registrations error: " . $re->getMessage());
         }
 
-        setAppStateValue($pdo, 'nextRegSeq', 105);
+        $currSeq = (int)getAppStateValue($pdo, 'nextRegSeq', 100);
+        setAppStateValue($pdo, 'nextRegSeq', max($currSeq, 105));
         setAppStateValue($pdo, 'activeYearId', '1404-1405');
         setAppStateValue($pdo, 'viewingYearId', '1404-1405');
         logAudit($pdo, null, 'SEED_SAMPLE_DATA', 'system', '5_records', ['count' => 5]);
@@ -650,11 +685,13 @@ function b64UrlDec($data) {
 
 function signToken($user, $secret) {
     $header = json_encode(['typ' => 'JWT', 'alg' => 'HS256']);
+    $pwdFp = !empty($user['password_hash']) ? substr(hash('sha256', $user['password_hash']), 0, 12) : '';
     $payload = json_encode([
         'uid' => $user['id'],
         'username' => $user['username'],
         'role' => $user['role'],
         'name' => $user['display_name'] ?? $user['username'],
+        'pwd_fp' => $pwdFp,
         'exp' => time() + (12 * 3600) // انقضای توکن: ۱۲ ساعت
     ]);
     $h = b64UrlEnc($header);
@@ -685,11 +722,17 @@ function getAuthUser($pdo, $secret) {
 
     // تایید وضعیت فعال بودن کاربر در دیتابیس (Fail-closed: کاربر غیرفعال یا حذف‌شده فوراً رد می‌شود) (P0-3)
     if ($pdo && !empty($payload['uid'])) {
-        $stmt = $pdo->prepare("SELECT id, username, role, display_name, is_active FROM users WHERE id = ? LIMIT 1");
+        $stmt = $pdo->prepare("SELECT id, username, role, display_name, is_active, password_hash FROM users WHERE id = ? LIMIT 1");
         $stmt->execute([$payload['uid']]);
         $dbUser = $stmt->fetch();
         if (!$dbUser || !(int)$dbUser['is_active']) {
             return null; // کاربر غیرفعال یا حذف‌شده بلافاصله دسترسی‌اش قطع می‌شود
+        }
+        if (!empty($payload['pwd_fp']) && !empty($dbUser['password_hash'])) {
+            $expectedFp = substr(hash('sha256', $dbUser['password_hash']), 0, 12);
+            if (!hash_equals($expectedFp, (string)$payload['pwd_fp'])) {
+                return null; // ابطال آنی توکن‌های قبلی پس از تغییر رمز عبور (BUG-09)
+            }
         }
         return [
             'uid' => $dbUser['id'],
@@ -774,21 +817,35 @@ function checkRateLimit($pdo, $ip, $action = 'LOGIN_FAILED', $maxAttempts = 5, $
     }
 }
 
-function isSafeExternalUrl($url) {
+function getSafeExternalHostIp($url) {
     $parsed = parse_url($url);
     if (!$parsed || empty($parsed['host']) || empty($parsed['scheme'])) return false;
     $scheme = strtolower($parsed['scheme']);
     if ($scheme !== 'https') return false; // اجبار استفاده از HTTPS برای امنیت داده‌های بانکی و ووکامرس
 
     $host = strtolower($parsed['host']);
-    if (in_array($host, ['localhost', '127.0.0.1', '::1', '0.0.0.0', '169.254.169.254'])) return false;
+    if (in_array($host, ['localhost', '127.0.0.1', '::1', '0.0.0.0', '169.254.169.254'], true)) return false;
 
-    // مسدودسازی محدوده‌های شبکه خصوصی (Private IP ranges - SSRF)
+    // استخراج و بررسی آی‌پی دامنه جهت ممانعت از SSRF و DNS Rebinding
     $ip = gethostbyname($host);
-    if ($ip && !filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+    if (!$ip || $ip === $host) {
+        $records = @dns_get_record($host, DNS_A);
+        if (!empty($records[0]['ip'])) {
+            $ip = $records[0]['ip'];
+        } else {
+            return false;
+        }
+    }
+
+    if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
         return false;
     }
-    return true;
+    $port = !empty($parsed['port']) ? (int)$parsed['port'] : 443;
+    return ['host' => $host, 'ip' => $ip, 'port' => $port];
+}
+
+function isSafeExternalUrl($url) {
+    return getSafeExternalHostIp($url) !== false;
 }
 
 function handleDbException(PDOException $e, $customMsg = '') {
@@ -1191,6 +1248,19 @@ if ($uri === '/students' && $method === 'POST') {
     requirePerm($user, 'write');
     $s = $body;
     try {
+        if (!empty($s['nationalId'])) {
+            $chkStmt = $pdo->prepare("SELECT id FROM students WHERE national_id = ? LIMIT 1");
+            $chkStmt->execute([$s['nationalId']]);
+            $existingStd = $chkStmt->fetch();
+            if ($existingStd) {
+                jsonResp([
+                    'error' => 'duplicate-national-id',
+                    'existingId' => $existingStd['id'],
+                    'message' => 'کد ملی وارد شده قبلاً برای دانش‌آموز دیگری ثبت شده است.'
+                ], 409);
+            }
+        }
+
         $stmt = $pdo->prepare("
         INSERT INTO students (id, national_id, first_name, last_name, father_name, birth_date, grade, gpa, school, city, neighborhood, address, phones, emails, previous_school, fields, notes, counselor_id, counselor_name)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -1264,7 +1334,7 @@ if (preg_match('#^/students/([^/]+)$#', $uri, $m)) {
             handleDbException($e, 'خطا در به‌روزرسانی دانش‌آموز');
         }
     } elseif ($method === 'DELETE') {
-        requirePerm($user, 'write');
+        requirePerm($user, 'delete');
         try {
             // ۱. بررسی وابستگی ثبت‌نام‌های فعال پیش از حذف دانش‌آموز
             $regStmt = $pdo->prepare("SELECT COUNT(*) FROM registrations WHERE student_id = ?");
@@ -1278,7 +1348,7 @@ if (preg_match('#^/students/([^/]+)$#', $uri, $m)) {
             jsonResp(['ok' => true]);
         } catch (\Throwable $e) {
             error_log("Delete student error: " . $e->getMessage());
-            jsonResp(['error' => 'delete-failed', 'message' => 'حذف پرونده دانش‌آموز با خطا مواجه شد: ' . $e->getMessage()], 500);
+            jsonResp(['error' => 'delete-failed', 'message' => 'حذف پرونده دانش‌آموز با خطا مواجه شد.'], 500);
         }
     }
 }
@@ -1361,7 +1431,7 @@ if (preg_match('#^/classes/([^/]+)$#', $uri, $m)) {
         logAudit($pdo, $user['uid'], 'UPDATE_CLASS', 'class', $id);
         jsonResp(['ok' => true, 'sessions' => $sessions]);
     } elseif ($method === 'DELETE') {
-        requirePerm($user, 'write');
+        requirePerm($user, 'delete');
         try {
             // صفر کردن ارجاع کلاس در ثبت‌نام‌ها به‌صورت امن
             try {
@@ -1373,7 +1443,7 @@ if (preg_match('#^/classes/([^/]+)$#', $uri, $m)) {
             jsonResp(['ok' => true]);
         } catch (\Throwable $e) {
             error_log("Delete class error: " . $e->getMessage());
-            jsonResp(['error' => 'delete-failed', 'message' => 'حذف کلاس با خطا مواجه شد: ' . $e->getMessage()], 500);
+            jsonResp(['error' => 'delete-failed', 'message' => 'حذف کلاس با خطا مواجه شد.'], 500);
         }
     }
 }
@@ -1442,7 +1512,7 @@ if (preg_match('#^/teachers/([^/]+)$#', $uri, $m)) {
         logAudit($pdo, $user['uid'], 'UPDATE_TEACHER', 'teacher', $id);
         jsonResp(['ok' => true]);
     } elseif ($method === 'DELETE') {
-        requirePerm($user, 'write');
+        requirePerm($user, 'delete');
         try {
             // حذف یا صفر کردن ارجاع کلاس‌ها به‌صورت کاملاً امن
             try {
@@ -1456,7 +1526,7 @@ if (preg_match('#^/teachers/([^/]+)$#', $uri, $m)) {
             jsonResp(['ok' => true]);
         } catch (\Throwable $e) {
             error_log("Delete teacher error: " . $e->getMessage());
-            jsonResp(['error' => 'delete-failed', 'message' => 'حذف مدرس با خطا مواجه شد: ' . $e->getMessage()], 500);
+            jsonResp(['error' => 'delete-failed', 'message' => 'حذف مدرس با خطا مواجه شد.'], 500);
         }
     }
 }
@@ -1527,7 +1597,7 @@ if (preg_match('#^/counselors/([^/]+)$#', $uri, $m)) {
         logAudit($pdo, $user['uid'], 'UPDATE_COUNSELOR', 'counselor', $id);
         jsonResp(['ok' => true]);
     } elseif ($method === 'DELETE') {
-        requirePerm($user, 'write');
+        requirePerm($user, 'delete');
         try {
             try {
                 $pdo->prepare("UPDATE students SET counselor_id = NULL, counselor_name = NULL WHERE counselor_id = ?")->execute([$id]);
@@ -1540,7 +1610,7 @@ if (preg_match('#^/counselors/([^/]+)$#', $uri, $m)) {
             jsonResp(['ok' => true]);
         } catch (\Throwable $e) {
             error_log("Delete counselor error: " . $e->getMessage());
-            jsonResp(['error' => 'delete-failed', 'message' => 'حذف مشاور با خطا مواجه شد: ' . $e->getMessage()], 500);
+            jsonResp(['error' => 'delete-failed', 'message' => 'حذف مشاور با خطا مواجه شد.'], 500);
         }
     }
 }
@@ -1572,11 +1642,28 @@ if ($uri === '/registrations' && $method === 'POST') {
         $currSeq = $sRow ? (int)json_decode($sRow['v'], true) : 0;
         $nextSeq = $currSeq + 1;
 
-        $jy = getJalaliYear();
-        $code = 'T-' . $jy . '-' . str_pad($nextSeq, 4, '0', STR_PAD_LEFT);
-
-        $upSeq = $pdo->prepare("INSERT INTO app_state (k, v) VALUES ('nextRegSeq', ?) ON DUPLICATE KEY UPDATE v = ?");
-        $upSeq->execute([json_encode($nextSeq), json_encode($nextSeq)]);
+        $code = null;
+        if (!empty($r['code']) && (preg_match('/^T-\d{4}-\d+$/', $r['code']) || preg_match('/^T-WC/', $r['code']))) {
+            $chkCode = $pdo->prepare("SELECT COUNT(*) FROM registrations WHERE code = ?");
+            $chkCode->execute([$r['code']]);
+            if ((int)$chkCode->fetchColumn() === 0) {
+                $code = $r['code'];
+                if (preg_match('/^T-\d{4}-(\d+)$/', $r['code'], $cm)) {
+                    $cNum = (int)$cm[1];
+                    if ($cNum >= $nextSeq) {
+                        $nextSeq = $cNum;
+                        $upSeq = $pdo->prepare("INSERT INTO app_state (k, v) VALUES ('nextRegSeq', ?) ON DUPLICATE KEY UPDATE v = ?");
+                        $upSeq->execute([json_encode($nextSeq), json_encode($nextSeq)]);
+                    }
+                }
+            }
+        }
+        if (!$code) {
+            $jy = getJalaliYear();
+            $code = 'T-' . $jy . '-' . str_pad($nextSeq, 4, '0', STR_PAD_LEFT);
+            $upSeq = $pdo->prepare("INSERT INTO app_state (k, v) VALUES ('nextRegSeq', ?) ON DUPLICATE KEY UPDATE v = ?");
+            $upSeq->execute([json_encode($nextSeq), json_encode($nextSeq)]);
+        }
 
         $planJson = isset($r['plan']) ? json_encode($r['plan'], JSON_UNESCAPED_UNICODE) : null;
         $amount = isset($r['amount']) ? (float)$r['amount'] : (float)($r['totalAmount'] ?? 0);
@@ -1678,7 +1765,7 @@ if (preg_match('#^/registrations/([^/]+)$#', $uri, $m)) {
         logAudit($pdo, $user['uid'], 'UPDATE_REGISTRATION', 'registration', $id);
         jsonResp(['ok' => true]);
     } elseif ($method === 'DELETE') {
-        requirePerm($user, 'write');
+        requirePerm($user, 'delete');
         try {
             $checkStmt = $pdo->prepare("SELECT year_id, class_id, is_package, package_selections FROM registrations WHERE id = ?");
             $checkStmt->execute([$id]);
@@ -1706,7 +1793,7 @@ if (preg_match('#^/registrations/([^/]+)$#', $uri, $m)) {
             jsonResp(['ok' => true]);
         } catch (\Throwable $e) {
             error_log("Delete registration error: " . $e->getMessage());
-            jsonResp(['error' => 'delete-failed', 'message' => 'حذف ثبت‌نام با خطا مواجه شد: ' . $e->getMessage()], 500);
+            jsonResp(['error' => 'delete-failed', 'message' => 'حذف ثبت‌نام با خطا مواجه شد.'], 500);
         }
     }
 }
@@ -1838,13 +1925,15 @@ if ($uri === '/years' && $method === 'POST') {
     $title = $y['title'] ?? ($y['label'] ?? ("سال تحصیلی " . $id));
     $short = $y['shortTitle'] ?? $id;
     $period = $y['periodLabel'] ?? $title;
+    $startDate = $y['startDate'] ?? '';
+    $endDate = $y['endDate'] ?? '';
 
     $stmt = $pdo->prepare("
     INSERT INTO academic_years (id, title, short_title, period_label, start_date, end_date, status)
     VALUES (?, ?, ?, ?, ?, ?, 'active')
-    ON DUPLICATE KEY UPDATE title = VALUES(title), short_title = VALUES(short_title), period_label = VALUES(period_label)
+    ON DUPLICATE KEY UPDATE title = VALUES(title), short_title = VALUES(short_title), period_label = VALUES(period_label), start_date = VALUES(start_date), end_date = VALUES(end_date)
     ");
-    $stmt->execute([$id, $title, $short, $period, $y['startDate'] ?? '', $y['endDate'] ?? '']);
+    $stmt->execute([$id, $title, $short, $period, $startDate, $endDate]);
     setAppStateValue($pdo, 'activeYearId', $id);
     logAudit($pdo, $user['uid'], 'CREATE_YEAR', 'year', $id, ['title' => $title]);
     jsonResp(['ok' => true, 'id' => $id]);
@@ -1854,6 +1943,7 @@ if (preg_match('#^/years/([^/]+)/archive$#', $uri, $m)) {
     if ($method !== 'POST') jsonResp(['error' => 'method-not-allowed'], 405);
     requirePerm($user, 'years');
     $yearId = $m[1];
+    $keepStudents = !empty($body['keepStudents']);
 
     $studentsRaw = array_map('mapStudent', $pdo->query("SELECT * FROM students")->fetchAll());
     $classesRaw = array_map('mapClass', $pdo->query("SELECT * FROM classes")->fetchAll());
@@ -1878,15 +1968,63 @@ if (preg_match('#^/years/([^/]+)/archive$#', $uri, $m)) {
     $up = $pdo->prepare("UPDATE academic_years SET status = 'archived' WHERE id = ?");
     $up->execute([$yearId]);
 
+    if (!$keepStudents) {
+        $pdo->prepare("DELETE FROM students")->execute();
+    }
+    $pdo->prepare("DELETE FROM registrations WHERE year_id = ?")->execute([$yearId]);
+
     logAudit($pdo, $user['uid'], 'ARCHIVE_YEAR', 'year', $yearId);
     jsonResp(['ok' => true]);
+}
+
+// اندپوینت‌های به‌روزرسانی و حذف سال تحصیلی (BUG-05)
+if (preg_match('#^/years/([^/]+)$#', $uri, $m)) {
+    $yearId = $m[1];
+    if ($method === 'PUT') {
+        requirePerm($user, 'years');
+        $y = $body;
+        $title = $y['title'] ?? ($y['label'] ?? null);
+        $short = $y['shortTitle'] ?? null;
+        $period = $y['periodLabel'] ?? null;
+        $startDate = $y['startDate'] ?? null;
+        $endDate = $y['endDate'] ?? null;
+        $status = $y['status'] ?? null;
+
+        $stmt = $pdo->prepare("
+            UPDATE academic_years
+            SET title = COALESCE(?, title),
+                short_title = COALESCE(?, short_title),
+                period_label = COALESCE(?, period_label),
+                start_date = COALESCE(?, start_date),
+                end_date = COALESCE(?, end_date),
+                status = COALESCE(?, status)
+            WHERE id = ?
+        ");
+        $stmt->execute([$title, $short, $period, $startDate, $endDate, $status, $yearId]);
+        logAudit($pdo, $user['uid'], 'UPDATE_YEAR', 'year', $yearId, $y);
+        jsonResp(['ok' => true]);
+    }
+    if ($method === 'DELETE') {
+        requirePerm($user, 'years');
+        $activeYearId = getAppStateValue($pdo, 'activeYearId', '');
+        if ($yearId === $activeYearId) {
+            jsonResp(['error' => 'cannot-delete-active-year', 'message' => 'سال تحصیلی فعال قابل حذف نیست.'], 400);
+        }
+        $stmt = $pdo->prepare("DELETE FROM academic_years WHERE id = ?");
+        $stmt->execute([$yearId]);
+        $stmt2 = $pdo->prepare("DELETE FROM archived_years WHERE year_id = ?");
+        $stmt2->execute([$yearId]);
+        logAudit($pdo, $user['uid'], 'DELETE_YEAR', 'year', $yearId);
+        jsonResp(['ok' => true]);
+    }
 }
 
 // -------------------------------------------------------------
 // ۱۴. ووکامرس (WooCommerce) سمت سرور - اتصالات امن و احراز هویت Basic (P1-7, P2-8)
 // -------------------------------------------------------------
 function wooCurl($url, $ck, $cs) {
-    if (!isSafeExternalUrl($url)) {
+    $safeHost = getSafeExternalHostIp($url);
+    if (!$safeHost) {
         return ['ok' => false, 'error' => 'آدرس فروشگاه نامعتبر است یا در محدوده شبکه‌های غیرمجاز قرار دارد (گارد ضد SSRF)', 'status' => 400];
     }
 
@@ -1894,6 +2032,12 @@ function wooCurl($url, $ck, $cs) {
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 25);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 8);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
+    if (defined('CURLPROTO_HTTPS')) {
+        curl_setopt($ch, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
+    }
+    curl_setopt($ch, CURLOPT_RESOLVE, ["{$safeHost['host']}:{$safeHost['port']}:{$safeHost['ip']}"]);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
     curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
     curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (compatible; AllamehHelli-TCMS/1.0)');
@@ -1978,8 +2122,21 @@ if ($uri === '/woo/products') {
 // -------------------------------------------------------------
 // ۱۵. سیستم لاگ، گزارش‌گیری و بازیابی داده‌های نمونه
 // -------------------------------------------------------------
+function escapeCsvFormula($str) {
+    if ($str === null || $str === '') return '';
+    $s = (string)$str;
+    if (strlen($s) > 0 && in_array($s[0], ['=', '+', '-', '@', "\t", "\r"], true)) {
+        return "'" . $s;
+    }
+    return $s;
+}
+
 if ($uri === '/seed-samples' && $method === 'POST') {
-    requirePerm($user, 'write');
+    requirePerm($user, 'admin');
+    $isDemoAllowed = envVal('ENABLE_DEMO_SEED', 'false') === 'true' || envVal('APP_ENV', '') === 'development';
+    if (!$isDemoAllowed) {
+        jsonResp(['error' => 'forbidden', 'message' => 'بارگذاری داده‌های نمونه فقط در محیط آزمایشی با فلگ ENABLE_DEMO_SEED=true مجاز است.'], 403);
+    }
     $res = seedFiveSampleData($pdo);
     if (!($res['ok'] ?? false)) {
         jsonResp(['error' => 'seed-failed', 'message' => 'بارگذاری داده‌های نمونه در دیتابیس با خطا مواجه شد: ' . ($res['error'] ?? 'خطای ناشناخته')], 500);
@@ -1989,7 +2146,7 @@ if ($uri === '/seed-samples' && $method === 'POST') {
 }
 
 if ($uri === '/logs' && $method === 'GET') {
-    requirePerm($user, 'read');
+    requirePerm($user, 'delete'); // دسترسی مدیران ارشد و مدیران سیستم
     $limit = min(200, max(10, (int)($_GET['limit'] ?? 100)));
     $stmt = $pdo->prepare("SELECT a.*, u.username, u.display_name FROM audit_log a LEFT JOIN users u ON a.user_id = u.id ORDER BY a.id DESC LIMIT ?");
     $stmt->bindValue(1, $limit, PDO::PARAM_INT);
@@ -1999,7 +2156,7 @@ if ($uri === '/logs' && $method === 'GET') {
 }
 
 if ($uri === '/logs/export' && $method === 'GET') {
-    requirePerm($user, 'read');
+    requirePerm($user, 'delete'); // دسترسی مدیران ارشد و مدیران سیستم
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="helli-audit-logs-' . date('Y-m-d') . '.csv"');
     $output = fopen('php://output', 'w');
@@ -2009,14 +2166,14 @@ if ($uri === '/logs/export' && $method === 'GET') {
     $stmt = $pdo->query("SELECT a.*, u.username FROM audit_log a LEFT JOIN users u ON a.user_id = u.id ORDER BY a.id DESC LIMIT 1000");
     while ($r = $stmt->fetch()) {
         fputcsv($output, [
-            $r['id'],
-            $r['username'] ?: ($r['user_id'] ?: 'سیستم'),
-            $r['action'],
-            $r['entity'],
-            $r['entity_id'],
-            $r['ip'],
-            $r['created_at'],
-            $r['details']
+            escapeCsvFormula($r['id']),
+            escapeCsvFormula($r['username'] ?: ($r['user_id'] ?: 'سیستم')),
+            escapeCsvFormula($r['action']),
+            escapeCsvFormula($r['entity']),
+            escapeCsvFormula($r['entity_id']),
+            escapeCsvFormula($r['ip']),
+            escapeCsvFormula($r['created_at']),
+            escapeCsvFormula($r['details'])
         ]);
     }
     fclose($output);

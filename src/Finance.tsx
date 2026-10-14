@@ -7,12 +7,15 @@ import React, { useState, useEffect } from 'react';
 import { useAppStore } from './store';
 import {
   toPersianDigits,
+  toEnglishDigits,
   formatToman,
   formatNumber,
   isOverdue,
   daysOverdue,
   getTodayJalali,
   jalaliToDate,
+  parseJalaliDate,
+  PERSIAN_MONTH_NAMES,
 } from './utils';
 import { DateRangePicker, JalaliDateRange } from './DateRangePicker';
 import { ProgressBar, useToast, Avatar, InfoTooltip } from './ui';
@@ -199,16 +202,36 @@ export const Finance: React.FC<FinanceProps> = ({ initialFilters, onNavigate }) 
     setPaymentModalItem(null);
   };
 
-  // 6-Month Collection Trend Mock Data
-  const monthlyTrend = [
-    { month: 'اردیبهشت', target: 45000000, collected: 42000000 },
-    { month: 'خرداد', target: 55000000, collected: 51000000 },
-    { month: 'تیر', target: 70000000, collected: 68000000 },
-    { month: 'مرداد', target: 95000000, collected: 90000000 },
-    { month: 'شهریور', target: 130000000, collected: 122000000 },
-    { month: 'مهر', target: 110000000, collected: 85000000 },
-  ];
-  const maxMonthlyTarget = Math.max(...monthlyTrend.map((m) => m.target));
+  // 6-Month Collection Trend Dynamic Data (BUG-17: محاسبه پویای روند مالی بر اساس اقساط واقعی)
+  const windowMonths = [1, 2, 3, 4, 5, 6].map((mIdx) => {
+    const monthNum = mIdx + 1; // اردیبهشت (۲) تا مهر (۷)
+    const monthName = PERSIAN_MONTH_NAMES[mIdx];
+    let target = 0;
+    let collected = 0;
+
+    state.registrations.forEach((r) => {
+      if (r.status === 'cancelled') return;
+      r.plan?.installments?.forEach((inst) => {
+        const instDue = toEnglishDigits(inst.dueDate || '');
+        const p = parseJalaliDate(instDue);
+        if (p && p.month === monthNum) {
+          target += inst.amount;
+          if (inst.paidAt) {
+            collected += inst.amount;
+          }
+        }
+      });
+    });
+
+    return {
+      month: monthName,
+      target,
+      collected,
+    };
+  });
+
+  const monthlyTrend = windowMonths;
+  const maxMonthlyTarget = Math.max(...monthlyTrend.map((m) => m.target), 1);
 
   return (
     <div className="space-y-6">

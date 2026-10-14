@@ -19,8 +19,7 @@
   RewriteRule ^api(/.*)?$ api/index.php [QSA,L]
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteRule ^api(/.*)?$ dist/api/index.php [QSA,L]
-  RewriteCond %{REQUEST_FILENAME} !-f
-  RewriteRule ^api(/.*)?$ php-api/index.php [QSA,L]
+
 
   # ۲. بازنویسی هوشمند پوشه فونت‌ها و فایل‌های استاتیک از dist یا public
   RewriteCond %{DOCUMENT_ROOT}/dist/fonts/$1 -f

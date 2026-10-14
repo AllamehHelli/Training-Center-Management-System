@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { AppProvider, useAppStore, DEMO_TOOLS_ENABLED } from './store';
 import { SettingsProvider } from './Settings';
 import { ToastProvider, useToast, ConfirmModal } from './ui';
-import { getTodayJalali, toPersianDigits, downloadCSV } from './utils';
+import { getTodayJalali, toPersianDigits, downloadCSV, safeEscapeCsvCell } from './utils';
 import { BACKEND_ENABLED, clearToken, getToken, performLogout } from './api';
 import { logger } from './logger';
 import { SystemLogModal } from './components/SystemLogModal';
@@ -154,19 +154,19 @@ const AppContent: React.FC = () => {
   const handleQuickExport = () => {
     const headers = ['کد پیگیری', 'دانش‌آموز', 'پایه', 'دوره', 'وضعیت پذیرش', 'مبلغ کل (تومان)'];
     const csvContent = [
-      headers.join(','),
+      headers.map(safeEscapeCsvCell).join(','),
       ...state.registrations.map((r) => {
         const student = state.students.find((s) => s.id === r.studentId);
         const classRoom = state.classes.find((c) => c.id === r.classId);
         const statusFa =
           r.status === 'approved' ? 'تأیید شده' : r.status === 'pending' ? 'در انتظار بررسی' : 'لغو شده';
         return [
-          `"${r.code}"`,
-          `"${student ? `${student.firstName} ${student.lastName}` : ''}"`,
-          `"${student?.grade || ''}"`,
-          `"${classRoom?.name || ''}"`,
-          `"${statusFa}"`,
-          `"${r.plan.totalAmount || r.amount}"`,
+          safeEscapeCsvCell(r.code),
+          safeEscapeCsvCell(student ? `${student.firstName} ${student.lastName}` : ''),
+          safeEscapeCsvCell(student?.grade || ''),
+          safeEscapeCsvCell(classRoom?.name || ''),
+          safeEscapeCsvCell(statusFa),
+          safeEscapeCsvCell(r.plan.totalAmount || r.amount),
         ].join(',');
       }),
     ].join('\n');

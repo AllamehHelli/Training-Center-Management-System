@@ -13,6 +13,12 @@ import {
   addDaysJalali,
   isOverdue,
   downloadCSV,
+  safeEscapeCsvCell,
+  parseJalaliDate,
+  getJalaliDayOfWeek,
+  PERSIAN_MONTH_NAMES,
+  PERSIAN_DAY_NAMES,
+  toEnglishDigits,
 } from './utils';
 import { Counter, ProgressBar, Avatar, useToast, InfoTooltip } from './ui';
 import {
@@ -173,16 +179,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
     };
   });
 
-  // 7-Day Trend Data
-  const chartDays = [
-    { day: 'شنبه', date: '۲۸ شهریور', count: 3 },
-    { day: 'یکشنبه', date: '۲۹ شهریور', count: 5 },
-    { day: 'دوشنبه', date: '۳۰ شهریور', count: 4 },
-    { day: 'سه‌شنبه', date: '۳۱ شهریور', count: 6 },
-    { day: 'چهارشنبه', date: '۱ مهر', count: 8 },
-    { day: 'پنجشنبه', date: '۲ مهر', count: 7 },
-    { day: 'جمعه', date: '۳ مهر', count: 2 },
-  ];
+  // 7-Day Trend Data (BUG-17: محاسبه پویا بر اساس پرونده‌های واقعی هفته اخیر)
+  const chartDays = Array.from({ length: 7 }, (_, i) => {
+    const targetDate = addDaysJalali(today, -6 + i);
+    const parsed = parseJalaliDate(targetDate);
+    const dayName = parsed ? PERSIAN_DAY_NAMES[getJalaliDayOfWeek(parsed.year, parsed.month, parsed.day)] : '';
+    const dateLabel = parsed ? `${toPersianDigits(parsed.day)} ${PERSIAN_MONTH_NAMES[parsed.month - 1]}` : targetDate;
+    const targetEng = toEnglishDigits(targetDate);
+    const count = state.registrations.filter((r) => toEnglishDigits(r.date || '') === targetEng).length;
+    return { day: dayName, date: dateLabel, count };
+  });
   const maxChartCount = Math.max(...chartDays.map((d) => d.count), 10);
 
   // Quick Approve/Reject handlers
@@ -198,22 +204,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setOpenRowActionId(null);
   };
 
-  // CSV Export for Registrations
+  // CSV Export for Registrations (BUG-10: جلوگیری از CSV Formula Injection)
   const handleExportCSV = () => {
     const headers = ['کد پیگیری', 'نام دانش‌آموز', 'پایه تحصیلی', 'دوره آموزشی', 'وضعیت پذیرش', 'مبلغ کل (تومان)', 'تاریخ ثبت'];
     const csvContent = [
-      headers.join(','),
+      headers.map(safeEscapeCsvCell).join(','),
       ...state.registrations.map((r) => {
         const student = getStudentById(r.studentId);
         const classRoom = getClassById(r.classId);
+        const statusFa = r.status === 'approved' ? 'تأیید شده' : r.status === 'pending' ? 'در انتظار' : 'لغو شده';
         return [
-          `"${r.code}"`,
-          `"${student ? `${student.firstName} ${student.lastName}` : ''}"`,
-          `"${student?.grade || ''}"`,
-          `"${classRoom?.name || ''}"`,
-          `"${r.status === 'approved' ? 'تأیید شده' : r.status === 'pending' ? 'در انتظار' : 'لغو شده'}"`,
-          `"${r.plan.totalAmount || r.amount}"`,
-          `"${r.date}"`,
+          safeEscapeCsvCell(r.code),
+          safeEscapeCsvCell(student ? `${student.firstName} ${student.lastName}` : ''),
+          safeEscapeCsvCell(student?.grade || ''),
+          safeEscapeCsvCell(classRoom?.name || ''),
+          safeEscapeCsvCell(statusFa),
+          safeEscapeCsvCell(r.plan.totalAmount || r.amount),
+          safeEscapeCsvCell(r.date),
         ].join(',');
       }),
     ].join('\n');

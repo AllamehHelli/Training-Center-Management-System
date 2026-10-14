@@ -407,14 +407,21 @@ function appReducer(state: AppState, action: AppAction): AppState {
               ? { ...c, packageCourseIds: c.packageCourseIds.filter((id) => id !== action.payload) }
               : c
           ),
-        registrations: state.registrations.filter((r) => r.classId !== action.payload),
+        registrations: state.registrations.map((r) =>
+          r.classId === action.payload ? { ...r, classId: '', sessionId: '' } : r
+        ),
       };
 
     case 'ADD_REGISTRATION': {
-      // Tracking codes are issued centrally here (never by the caller) so the
+      // Tracking codes are issued centrally here so the
       // sequence is global, monotonic and collision-free across years/deletes.
       const taken = allKnownCodes();
-      const code = issueRegistrationCode(taken);
+      const code =
+        action.payload.code &&
+        (/^T-\d{4}-\d+$/.test(action.payload.code) || action.payload.code.startsWith('T-WC')) &&
+        !taken.has(action.payload.code)
+          ? action.payload.code
+          : issueRegistrationCode(taken);
       const registration: Registration = { ...action.payload, code };
       const seq = parseInt(code.split('-')[2], 10) || state.nextRegSeq;
       return {
@@ -760,20 +767,21 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
       if (targetYearId === state.activeYearId) {
         // Restore the live dataset from the active year's own snapshot
-        // (falling back to current live dataset if never initialized or empty).
         const live: AcademicYearDataSnapshot = targetYear.archivedData || {
           students: state.students,
           classes: state.classes,
           registrations: state.registrations,
         };
-        const safeStudents = (live.students && live.students.length > 0) ? live.students : state.students;
+        const safeStudents = Array.isArray(live.students) ? live.students : [];
+        const safeClasses = Array.isArray(live.classes) ? live.classes : [];
+        const safeRegs = Array.isArray(live.registrations) ? live.registrations : [];
         return {
           ...state,
           academicYears: updatedYears,
           viewingYearId: targetYearId,
           students: safeStudents,
-          classes: (live.classes && live.classes.length > 0) ? live.classes : state.classes,
-          registrations: (live.registrations && live.registrations.length > 0) ? live.registrations : state.registrations,
+          classes: safeClasses,
+          registrations: safeRegs,
         };
       }
 
@@ -1068,19 +1076,6 @@ export const AppProvider: React.FC<{
           .catch((e: Error) => logger.warn('SYNC', `ذخیره نمونه‌ها روی سرور: ${e.message}`));
         return;
       }
-      // Installment pay/refund have installment-scoped REST routes; mirror
-      // them through the custom event consumed by the listener below.
-      if (action.type === 'MARK_INSTALLMENT_PAID' || action.type === 'REFUND_INSTALLMENT') {
-        const p = action.payload as { regId: string; instId: string; paidAt?: string };
-        window.dispatchEvent(new CustomEvent('helli:payment-event', {
-          detail: {
-            regId: p.regId, instId: p.instId,
-            kind: action.type === 'MARK_INSTALLMENT_PAID' ? 'pay' : 'refund',
-            paidDate: p.paidAt || '',
-          },
-        }));
-        return;
-      }
       void syncAction(action as { type: string; payload?: any }).catch((e: Error & { status?: number }) => {
         console.error('backend sync failed:', action.type, e);
         logger.error('SYNC', `شکست همگام‌سازی ${action.type}: ${e.message}`, { action, error: e }, { status: e.status });
@@ -1095,23 +1090,6 @@ export const AppProvider: React.FC<{
       });
     }
   };
-
-  // Payment events need their dedicated server routes (installment-scoped),
-  // so they are handled through a custom DOM event fired by Finance/Registrations
-  // alongside the reducer action. This keeps the reducer pure.
-  useEffect(() => {
-    if (!BACKEND_ENABLED) return;
-    const handler = (ev: Event) => {
-      const d = (ev as CustomEvent).detail as { regId: string; instId: string; kind: 'pay' | 'refund'; paidDate?: string };
-      const path = `/registrations/${d.regId}/installments/${d.instId}/${d.kind === 'pay' ? 'pay' : 'refund'}`;
-      void serverApi.post(path, { paidDate: d.paidDate || '' }).catch((e: Error & { status?: number }) => {
-        logger.error('SYNC', `خطای ثبت پرداخت سمت سرور: ${e.message}`, { path, error: e }, { status: e.status, url: path });
-        notify(e.status === 423 ? 'این سال بایگانی‌شده و فقط‌خواندنی است.' : `خطا در ثبت پرداخت سمت سرور: ${e.message}`, 'error');
-      });
-    };
-    window.addEventListener('helli:payment-event', handler);
-    return () => window.removeEventListener('helli:payment-event', handler);
-  }, []);
 
   // Server-state hydration: AuthGate fetches GET /api/state after login and
   // broadcasts it here so the whole app switches from the local optimistic

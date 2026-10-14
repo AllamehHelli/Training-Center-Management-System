@@ -13,6 +13,7 @@ import {
   downloadCSV,
   getTodayJalali,
   formatToman,
+  safeEscapeCsvCell,
 } from './utils';
 import { Student, PhoneNumber, StudentGrade } from './types';
 import {
@@ -314,30 +315,35 @@ export const Students: React.FC<StudentsProps> = ({ initialFilters }) => {
     setBulkAssignSelectedStudentIds([]);
   };
 
-  // Delete Student
+  // Delete Student (BUG-06: جلوگیری از عدم تقارن با بررسی وابستگی ثبت‌نام‌های فعال)
   const handleDeleteStudent = (id: string) => {
+    const hasRegs = state.registrations.some((r) => r.studentId === id && r.status !== 'cancelled');
+    if (hasRegs) {
+      showToast('این دانش‌آموز دارای پرونده ثبت‌نام فعال در سامانه است. جهت حذف پرونده، ابتدا باید ثبت‌نام‌های مربوطه لغو یا حذف شوند.', 'error');
+      return;
+    }
     dispatch({ type: 'DELETE_STUDENT', payload: id });
-    showToast('پرونده دانش‌آموز و ثبت‌نام‌های مربوطه حذف شدند', 'info');
+    showToast('پرونده دانش‌آموز با موفقیت حذف شد', 'info');
   };
 
-  // Export CSV
+  // Export CSV (BUG-10: جلوگیری از CSV Formula Injection)
   const handleExportCSV = () => {
     const headers = ['نام', 'نام خانوادگی', 'نام پدر', 'کد ملی', 'پایه', 'معدل', 'مدرسه', 'شماره‌های تماس'];
     const rows = state.students.map((s) => {
       const phoneList = s.phones.map((p) => `${p.label}: ${p.number}`).join(' | ');
       return [
-        `"${s.firstName}"`,
-        `"${s.lastName}"`,
-        `"${s.fatherName}"`,
-        `"${s.nationalId}"`,
-        `"${s.grade}"`,
-        `"${s.gpa}"`,
-        `"${s.school}"`,
-        `"${phoneList}"`,
+        safeEscapeCsvCell(s.firstName),
+        safeEscapeCsvCell(s.lastName),
+        safeEscapeCsvCell(s.fatherName),
+        safeEscapeCsvCell(s.nationalId),
+        safeEscapeCsvCell(s.grade),
+        safeEscapeCsvCell(s.gpa),
+        safeEscapeCsvCell(s.school),
+        safeEscapeCsvCell(phoneList),
       ].join(',');
     });
 
-    const csv = [headers.join(','), ...rows].join('\n');
+    const csv = [headers.map(safeEscapeCsvCell).join(','), ...rows].join('\n');
     downloadCSV(`students-${getTodayJalali().replace(/\//g, '-')}.csv`, csv);
     showToast('فهرست دانش‌آموزان به صورت فایل CSV دانلود شد', 'info');
   };

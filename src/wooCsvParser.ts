@@ -296,7 +296,7 @@ export function parseWooCommerceOrdersCsv(
     const orderId = rawOrderId || String(idx + 1);
 
     const orderDateRaw = String(row['تاریخ سفارش'] || row['order_date'] || row['date'] || '').trim();
-    const jalaliDate = orderDateRaw.split(/\s+/)[0] || '';
+    const jalaliDate = toEnglishDigits(orderDateRaw.split(/\s+/)[0] || '');
     const rawStatus = String(row['وضعیت'] || row['status'] || 'نامشخص').trim();
     const statusMeta = categorizeWooStatus(rawStatus);
 
@@ -574,8 +574,8 @@ export function parseWooCommerceOrdersCsv(
         id: `inst-woo-${ord.orderId}`,
         title: `قسط ${toPersianDigits(i + 1)} (سفارش #${toPersianDigits(ord.orderId)})`,
         amount: ord.amount,
-        dueDate: ord.jalaliDate || '۱۴۰۵/۰۷/۰۱',
-        paidAt: ord.isPaid ? (ord.jalaliDate || '۱۴۰۵/۰۷/۰۱') : null,
+        dueDate: ord.jalaliDate || '1405/07/01',
+        paidAt: ord.isPaid ? (ord.jalaliDate || '1405/07/01') : null,
       });
     });
 
@@ -612,7 +612,7 @@ export function parseWooCommerceOrdersCsv(
         downPayment: totalRealized,
         installments,
       },
-      date: orderList[0]?.jalaliDate || '۱۴۰۵/۰۷/۰۱',
+      date: orderList[0]?.jalaliDate || '1405/07/01',
       notes: `ثبت‌نام آنلاین ووکامرس: دوره ${courseName} (شامل ${toPersianDigits(installments.length)} قسط)`,
       wooOrderId: orderList[0]?.orderId,
       wooOrderSyncedAt: new Date().toISOString().slice(0, 10),
